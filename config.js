@@ -1,5 +1,3 @@
-// Conexión a Supabase. Estos dos valores son públicos por diseño:
-// la seguridad la dan el inicio de sesión y las reglas (RLS) de supabase/schema.sql.
 window.CP_CONFIG = {
   supabaseUrl: "https://alkukgmfwiwxymwezedl.supabase.co",
   supabaseAnonKey: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImFsa3VrZ21md2l3eHltd2V6ZWRsIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTI3Njc5NTAsImV4cCI6MjEwODM0Mzk1MH0.QbPSGfRvduj6kMBEpnECIsC70GDOZAuZlVBiNYND4eY"
