@@ -9,7 +9,12 @@ App web para pase de lista por turno, cobertura por área y posición (áreas de
 
 - **Cobertura, Pase de lista, Personal:** operación diaria.
 - **Reportes:** *Resumen* (asistencia, ausentismo, faltas y retardos, sin registrar; gráficas por día, turno y agrupación por posición, área, sitio, gerente o supervisor; cobertura de posiciones por día; personas con más ausencias) y *Reportes* descargables en Excel o CSV (resumen por día y turno, asistencia detallada, ausentismo por persona, cobertura por día, plantilla, certificaciones). Periodo por día, semana o rango de hasta 62 días.
-- **Catálogos:** perfiles, certificaciones, áreas, sitios, gerentes y turnos.
+- **Movimientos:** cambio de supervisor con aprobación.
+  - *Pase:* el supervisor actual pasa a una persona a otro supervisor; aprueba quien la recibe.
+  - *Solicitud:* un supervisor pide a una persona de otro equipo; aprueba el supervisor actual.
+  - Al aprobar, la persona cambia de supervisor y toma el gerente del nuevo. Quien lo pidió puede cancelarlo mientras está pendiente. Todo queda en el historial y en *Reportes → Cambios de supervisor*.
+  - El supervisor de una persona ya no se cambia desde la ficha: solo por un movimiento aprobado o por quien tenga el permiso *gestionar movimientos* (lo valida la base, `supabase/movimientos.sql`).
+- **Catálogos:** perfiles, certificaciones, **supervisores** (cada uno ligado por correo a su cuenta, que es la que aprueba), áreas, sitios, gerentes y turnos.
 - **Usuarios** (solo admin): rol de cada cuenta y **Permisos por rol** (pestañas que ve y acciones que puede hacer).
 
 Este proyecto de Supabase lo comparte la app de Surtido de Línea: las cuentas nuevas entran con rol `sin_acceso` y no ven datos hasta que el administrador les asigna un rol (`supabase/acceso.sql`).

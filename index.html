@@ -118,6 +118,14 @@ td.mono,td.nw{white-space:nowrap}
 .modal-scrim{position:fixed;inset:0;background:#0009;display:grid;place-items:center;z-index:50;padding:16px}
 .modal{width:min(440px,100%);max-height:90vh;overflow:auto;padding:0}
 .perm-g td{background:var(--surface2)}
+.movs{display:grid;grid-template-columns:repeat(auto-fill,minmax(min(100%,360px),1fr));gap:12px}
+.mov{border:1px solid var(--line);border-left:5px solid var(--warn);border-radius:6px;background:var(--surface);padding:12px 14px;display:grid;gap:8px;min-width:0}
+.mov.tipo-solicitud{border-left-color:var(--accent)}
+.mov h4{margin:0;font-family:var(--f-display);font-size:19px;font-weight:600}
+.mov .ruta{display:flex;align-items:center;gap:8px;flex-wrap:wrap;font-size:13px}
+.mov .ruta b{font-weight:600}
+.mov .meta{font-size:12px;color:var(--muted)}
+.mov textarea{min-height:40px}
 .noaccess{min-height:70vh;display:grid;place-items:center}
 .noaccess .panel{width:min(460px,100%);display:grid;gap:12px}
 .datebox{display:flex;align-items:center;gap:6px}
@@ -295,6 +303,7 @@ tr.click{cursor:pointer} tr.click:hover td{background:var(--surface2)}
       <select id="l-pos" aria-label="Posición"></select>
       <select id="l-area" aria-label="Área"></select>
       <select id="l-sitio" aria-label="Sitio"></select>
+      <select id="l-sup" aria-label="Supervisor"></select>
       <input type="text" id="l-q" class="grow" placeholder="Buscar nombre o número">
       <button class="btn" id="l-all">Marcar pendientes como asistencia</button>
     </div>
@@ -311,6 +320,7 @@ tr.click{cursor:pointer} tr.click:hover td{background:var(--surface2)}
       <select id="p-area" aria-label="Área"></select>
       <select id="p-sitio" aria-label="Sitio"></select>
       <select id="p-ger" aria-label="Gerente"></select>
+      <select id="p-sup" aria-label="Supervisor"></select>
       <label class="muted" style="display:flex;gap:5px;align-items:center"><input type="checkbox" id="p-bajas"> Incluir bajas</label>
       <button class="btn primary" id="p-new">Agregar persona</button>
     </div>
@@ -324,6 +334,7 @@ tr.click{cursor:pointer} tr.click:hover td{background:var(--surface2)}
     </div>
   </section>
   <section class="view" id="v-reportes" hidden><div id="rep-root" style="display:flex;flex-direction:column;gap:16px"></div></section>
+  <section class="view" id="v-movimientos" hidden><div id="mov-root" style="display:flex;flex-direction:column;gap:16px"></div></section>
   <section class="view" id="v-usuarios" hidden><div id="usr-root" style="display:flex;flex-direction:column;gap:16px"></div></section>
 </main>
 </div>

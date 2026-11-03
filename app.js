@@ -9,10 +9,10 @@ const pad=n=>String(n).padStart(2,"0");
 const ymd=d=>d.getFullYear()+"-"+pad(d.getMonth()+1)+"-"+pad(d.getDate());
 const addDays=(s,n)=>{const d=new Date(s+"T12:00:00");d.setDate(d.getDate()+n);return ymd(d)};
 const fmtD=s=>{if(!s)return"";const [y,m,d]=String(s).slice(0,10).split("-");return d+"/"+m+"/"+y};
-const VIEWS=["cobertura","lista","personal","reportes","catalogos","usuarios"];
+const VIEWS=["cobertura","lista","personal","movimientos","reportes","catalogos","usuarios"];
 const sitioCorto=x=>String(x||"").replace(/^MX Guadalajara North\s*/i,"")||String(x||"");
 
-const S={sb:null,session:null,rol:"lector",perms:new Set(),isAdmin:false,canMark:false,canPersonal:false,canCatalog:false,canReq:false,roles:[],emps:new Map(),cfg:null,att:{},date:ymd(new Date()),
+const S={sb:null,session:null,rol:"lector",perms:new Set(),sups:[],movs:[],movsLoaded:false,isAdmin:false,canMark:false,canPersonal:false,canCatalog:false,canReq:false,roles:[],emps:new Map(),cfg:null,att:{},date:ymd(new Date()),
   tab:"cobertura",dim:"posicion",editReq:false,sel:null,loaded:false,channel:null,users:[],cat:"perfiles"};
 try{const d=localStorage.getItem("cp_dim");if(d)S.dim=d;const c=localStorage.getItem("cp_cat");if(c)S.cat=c;}catch(e){}
 
@@ -26,20 +26,22 @@ const TABS={
   cobertura:{label:"Cobertura",sub:"Presentes contra requeridos por área o posición y turno. En rojo, lo que está descubierto.",icon:'<path d="M3 3h7v7H3zM14 3h7v7h-7zM3 14h7v7H3z"/><path d="M14 17.5l2.2 2.2 4.3-4.4"/>'},
   lista:{label:"Pase de lista",sub:"Marca la asistencia de cada persona del turno.",icon:'<path d="M9 6h12M9 12h12M9 18h12"/><path d="M3.5 6l1.2 1.2L7 5M3.5 12l1.2 1.2L7 11M3.5 18l1.2 1.2L7 17"/>'},
   personal:{label:"Personal",sub:"Fichas con celular, sitio, a quién reporta y certificaciones.",icon:'<circle cx="9" cy="8" r="3.5"/><path d="M2.5 20c.8-3.5 3.4-5.5 6.5-5.5s5.7 2 6.5 5.5"/><path d="M16 4.5a3.5 3.5 0 010 7M18 14.8c1.9.8 3.1 2.6 3.5 5.2"/>'},
+  movimientos:{label:"Movimientos",sub:"Cambios de supervisor: pases y solicitudes de personal con aprobación.",icon:'<path d="M4 8h13l-3-3M20 16H7l3 3"/>'},
   reportes:{label:"Reportes",sub:"Asistencia, ausentismo y cobertura por periodo, con gráficas y descarga a Excel o CSV.",icon:'<path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/>'},
-  catalogos:{label:"Catálogos",sub:"Perfiles, certificaciones, áreas, sitios, gerentes y turnos.",icon:'<path d="M4 4h6v6H4zM4 14h6v6H4z"/><path d="M14 6h7M14 9h5M14 16h7M14 19h5"/>'},
+  catalogos:{label:"Catálogos",sub:"Perfiles, certificaciones, supervisores, áreas, sitios, gerentes y turnos.",icon:'<path d="M4 4h6v6H4zM4 14h6v6H4z"/><path d="M14 6h7M14 9h5M14 16h7M14 19h5"/>'},
   usuarios:{label:"Usuarios",sub:"Quién entra a la app y qué puede hacer cada rol.",icon:'<rect x="4" y="3" width="16" height="18" rx="2"/><circle cx="12" cy="10" r="3"/><path d="M8 17c1-2 2.5-3 4-3s3 1 4 3"/>'}
 };
-const TAB_ORDER=["cobertura","lista","personal","reportes","catalogos"];
+const TAB_ORDER=["cobertura","lista","personal","movimientos","reportes","catalogos"];
 const PRIVS=[
   ...TAB_ORDER.map(t=>({k:"tab:"+t,g:"Pestañas que ve",l:TABS[t].label})),
   {k:"pasar_lista",g:"Acciones",l:"Pasar lista (asistencia, retardos, faltas, permisos, vacaciones, incapacidades)",tab:"lista"},
   {k:"editar_personal",g:"Acciones",l:"Editar personal (altas, bajas, fichas, celular, certificaciones)",tab:"personal"},
   {k:"editar_requeridos",g:"Acciones",l:"Editar requeridos de la cobertura",tab:"cobertura"},
-  {k:"editar_catalogos",g:"Acciones",l:"Editar catálogos (perfiles, áreas, sitios, gerentes, turnos, certificaciones)",tab:"catalogos"}
+  {k:"editar_catalogos",g:"Acciones",l:"Editar catálogos (perfiles, supervisores, áreas, sitios, gerentes, turnos, certificaciones)",tab:"catalogos"},
+  {k:"gestionar_movimientos",g:"Acciones",l:"Pedir y aprobar cambios de supervisor de cualquier equipo (gerencia o RH)",tab:"movimientos"}
 ];
 const ROLE_DEFAULTS={
-  supervisor:["tab:cobertura","tab:lista","tab:personal","tab:reportes","pasar_lista"],
+  supervisor:["tab:cobertura","tab:lista","tab:personal","tab:movimientos","tab:reportes","pasar_lista"],
   lector:["tab:cobertura","tab:personal","tab:reportes"],
   sin_acceso:[]
 };
@@ -89,7 +91,11 @@ function refreshSelects(){
   const sit=listUsed("sitios","sitio");
   ["#cov-sitio","#l-sitio","#p-sitio"].forEach(id=>fillSelect($(id),sit,"Todos los sitios",sitioCorto));
   fillSelect($("#p-ger"),listUsed("gerentes","gerente"),"Todos los gerentes");
+  const sups=supsUsed();["#l-sup","#p-sup"].forEach(id=>fillSelect($(id),sups,"Todos los supervisores"));
 }
+function supsUsed(){const c=S.sups.filter(x=>x.activo!==false).map(x=>x.nombre);active().forEach(e=>{if(e.supervisor&&!c.includes(e.supervisor))c.push(e.supervisor)});return c.sort((a,b)=>a.localeCompare(b))}
+const myEmail=()=>((S.session&&S.session.user.email)||"").toLowerCase();
+const mySups=()=>S.sups.filter(x=>x.activo!==false&&x.email&&x.email.toLowerCase()===myEmail()).map(x=>x.nombre);
 function listUsed(k,f){const c=(cfg()[k]||[]).slice();active().forEach(e=>{if(e[f]&&!c.includes(e[f]))c.push(e[f])});return c}
 const covBase=()=>{const st=$("#cov-sitio").value;return active().filter(e=>!st||e.sitio===st)};
 
@@ -195,8 +201,8 @@ function renderCellDetail(){
 
 /* ---------- roll call ---------- */
 function rollPeople(){
-  const t=$("#l-turno").value,p=$("#l-pos").value,a=$("#l-area").value,st=$("#l-sitio").value,q=$("#l-q").value.trim().toLowerCase();
-  return active().filter(e=>e.turno===t&&(!p||e.posicion===p)&&(!a||e.area===a)&&(!st||e.sitio===st)&&(!q||e.nombre.toLowerCase().includes(q)||String(e.num).includes(q)))
+  const t=$("#l-turno").value,p=$("#l-pos").value,a=$("#l-area").value,st=$("#l-sitio").value,sp=$("#l-sup").value,q=$("#l-q").value.trim().toLowerCase();
+  return active().filter(e=>e.turno===t&&(!p||e.posicion===p)&&(!a||e.area===a)&&(!st||e.sitio===st)&&(!sp||e.supervisor===sp)&&(!q||e.nombre.toLowerCase().includes(q)||String(e.num).includes(q)))
     .sort((x,y)=>(x.posicion||"").localeCompare(y.posicion||"")||x.nombre.localeCompare(y.nombre));
 }
 function renderLista(){
@@ -232,8 +238,8 @@ async function markAll(){
 /* ---------- personal ---------- */
 function renderPersonal(){
   $("#p-new").hidden=!S.canPersonal;
-  const q=$("#p-q").value.trim().toLowerCase(),t=$("#p-turno").value,p=$("#p-pos").value,a=$("#p-area").value,st=$("#p-sitio").value,g=$("#p-ger").value,b=$("#p-bajas").checked;
-  const ppl=[...S.emps.values()].filter(e=>(b||e.activo!==false)&&(!t||e.turno===t)&&(!p||e.posicion===p)&&(!a||e.area===a)&&(!st||e.sitio===st)&&(!g||e.gerente===g)&&
+  const q=$("#p-q").value.trim().toLowerCase(),t=$("#p-turno").value,p=$("#p-pos").value,a=$("#p-area").value,st=$("#p-sitio").value,g=$("#p-ger").value,sp=$("#p-sup").value,b=$("#p-bajas").checked;
+  const ppl=[...S.emps.values()].filter(e=>(b||e.activo!==false)&&(!t||e.turno===t)&&(!p||e.posicion===p)&&(!a||e.area===a)&&(!st||e.sitio===st)&&(!g||e.gerente===g)&&(!sp||e.supervisor===sp)&&
     (!q||e.nombre.toLowerCase().includes(q)||String(e.num).includes(q)||(e.celular||"").includes(q))).sort((x,y)=>x.nombre.localeCompare(y.nombre));
   if(!ppl.length){$("#p-table").innerHTML=`<div class="empty">${S.loaded?"Sin resultados.":"Cargando personal…"}</div>`;return}
   const soon=addDays(S.date,30);
@@ -276,7 +282,7 @@ function renderDrawer(){
       <div class="field"><label for="f-area">Área</label><select id="f-area" ${dis}>${opt(C.areas,d.area,"Sin asignar")}</select></div>
       <div class="field"><label for="f-puesto">Puesto (HR)</label><input id="f-puesto" type="text" value="${esc(d.puesto)}" ${dis}></div>
       <div class="field"><label for="f-sitio">Sitio</label><select id="f-sitio" ${dis}>${opt(C.sitios||[],d.sitio,"Sin sitio")}</select></div>
-      <div class="field"><label for="f-sup">Supervisor directo</label><input id="f-sup" type="text" list="dl-sup" value="${esc(d.supervisor)}" ${dis}><datalist id="dl-sup">${[...new Set(active().map(x=>x.supervisor).filter(Boolean))].sort().map(x=>`<option value="${esc(x)}">`).join("")}</datalist></div>
+      <div class="field"><label for="f-sup">Supervisor directo</label><select id="f-sup" ${D.isNew||gestiona()?dis:"disabled"} title="${D.isNew||gestiona()?"":"El supervisor se cambia con un movimiento aprobado"}">${opt(supsUsed(),d.supervisor,"Sin supervisor")}</select>${!D.isNew&&canRequestFor(d)?`<button type="button" class="btn" id="f-mov" style="margin-top:6px">Solicitar cambio de supervisor</button>`:""}${pendingFor(d.num)?`<span class="chip warn" style="margin-top:6px;align-self:flex-start">Movimiento pendiente</span>`:""}</div>
       <div class="field"><label for="f-ger">Gerente</label><select id="f-ger" ${dis}>${opt(C.gerentes||[],d.gerente,"Sin gerente")}</select></div>
       <div class="field"><label for="f-activo">Estatus</label><select id="f-activo" ${dis}><option value="1" ${d.activo!==false?"selected":""}>Activo</option><option value="0" ${d.activo===false?"selected":""}>Baja</option></select></div>
     </div>
@@ -333,6 +339,7 @@ async function loadHistory(e){
 const CATS=[
   {id:"perfiles",label:"Perfiles",key:"posiciones",field:"posicion",group:"Puestos"},
   {id:"certificaciones",label:"Certificaciones",key:"certs",group:"Puestos"},
+  {id:"supervisores",label:"Supervisores",group:"Organización",count:()=>S.sups.length},
   {id:"areas",label:"Áreas",key:"areas",field:"area",group:"Organización",one:"área",help:"Procesos o zonas donde trabaja cada persona. Se usan en la cobertura por área."},
   {id:"sitios",label:"Sitios",key:"sitios",field:"sitio",group:"Organización",one:"sitio",help:"Edificio o planta a la que pertenece cada persona."},
   {id:"gerentes",label:"Gerentes",key:"gerentes",field:"gerente",group:"Organización",one:"gerente",help:"Gerente al que reporta cada persona. Debajo de cada uno se ven los supervisores de su equipo."},
@@ -345,13 +352,14 @@ function renderCatalogos(){
   if(!cats.some(c=>c.id===S.cat))S.cat="perfiles";
   let nav="",g="";
   cats.forEach(c=>{if(c.group!==g){g=c.group;nav+=`<div class="cat-h">${esc(g)}</div>`}
-    const n=(C[c.key]||[]).length;
+    const n=c.count?c.count():(C[c.key]||[]).length;
     nav+=`<button data-cat="${c.id}" aria-current="${S.cat===c.id}">${esc(c.label)}<span class="n">${n}</span></button>`});
   $("#cat-nav").innerHTML=nav;
   const c=cats.find(x=>x.id===S.cat);
   const body=$("#cat-body");
   if(c.id==="perfiles")body.innerHTML=catPerfiles();
   else if(c.id==="certificaciones")body.innerHTML=catCerts();
+  else if(c.id==="supervisores")body.innerHTML=catSupervisores();
   else body.innerHTML=catLista(c);
 }
 function addRow(key,ph){return S.canCatalog?`<div class="toolbar"><input type="text" id="cat-new" class="grow" placeholder="${esc(ph)}" aria-label="${esc(ph)}"><button class="btn primary" data-add="${key}">Agregar</button></div>`:""}
@@ -369,6 +377,24 @@ function catPerfiles(){
       <div class="field"><label>Certificaciones requeridas</label><div style="display:flex;gap:6px 12px;flex-wrap:wrap">${C.certs.map(n=>`<label class="ck"><input type="checkbox" data-creq="${esc(p)}" value="${esc(n)}" ${((C.certReq||{})[p]||[]).includes(n)?"checked":""} ${dis}> ${esc(n)}</label>`).join("")||'<span class="muted">Agrega certificaciones en su catálogo.</span>'}</div></div>
       ${S.canCatalog?`<div>${delBtn("posiciones",p)}</div>`:""}
     </div>`}).join("")||'<div class="empty">Sin posiciones.</div>'}</div>`;
+}
+function catSupervisores(){
+  const C=cfg(),ed=S.canCatalog,dis=ed?"":"disabled",ger=listUsed("gerentes","gerente");
+  const cuentas=new Set(S.users.map(u=>(u.email||"").toLowerCase()));
+  const orphan=[...new Set(active().map(e=>e.supervisor).filter(v=>v&&!S.sups.some(x=>x.nombre===v)))];
+  return `<div class="cathead"><h2>Supervisores</h2><p>Cada supervisor se liga por correo a su cuenta de la app. Con esa cuenta aprueba los pases que recibe y las solicitudes de su personal. Al aprobar un cambio, la persona toma el gerente de su nuevo supervisor.</p></div>
+  ${ed?`<div class="toolbar"><input type="text" id="sup-nombre" class="grow" placeholder="Nombre del supervisor" aria-label="Nombre del supervisor"><input type="email" id="sup-email" placeholder="correo@flex.com" aria-label="Correo"><select id="sup-ger" aria-label="Gerente"><option value="">Gerente</option>${ger.map(g=>`<option>${esc(g)}</option>`).join("")}</select><button class="btn primary" id="sup-add">Agregar</button></div>`:""}
+  <div class="panel" style="padding:0"><div class="scroll"><table><thead><tr><th>Supervisor</th><th>Correo de su cuenta</th><th>Gerente</th><th class="num">Personas</th><th>Activo</th><th></th></tr></thead><tbody>${
+    S.sups.map(x=>{const n=countBy("supervisor",x.nombre),em=(x.email||"").toLowerCase();
+      return `<tr><td><b style="font-weight:600">${esc(x.nombre)}</b></td>
+      <td><input type="email" data-sup="${esc(x.nombre)}" data-sf="email" value="${esc(x.email||"")}" placeholder="Sin cuenta" aria-label="Correo de ${esc(x.nombre)}" style="width:100%;min-width:200px" ${dis}>
+        ${S.isAdmin&&em?(cuentas.has(em)?'<div class="small" style="color:var(--ok)">Tiene cuenta</div>':'<div class="small" style="color:var(--warn)">Aún no tiene cuenta en la app</div>'):""}${!em?'<div class="small" style="color:var(--warn)">Sin correo: nadie puede aprobar por él</div>':""}</td>
+      <td><select data-sup="${esc(x.nombre)}" data-sf="gerente" aria-label="Gerente de ${esc(x.nombre)}" ${dis}>${opt(ger,x.gerente,"Sin gerente")}</select></td>
+      <td class="num">${n||'<span class="muted">0</span>'}</td>
+      <td><input type="checkbox" data-sup="${esc(x.nombre)}" data-sf="activo" ${x.activo!==false?"checked":""} aria-label="Activo" ${dis}></td>
+      <td style="text-align:right">${ed?`<button class="btn danger" data-supdel="${esc(x.nombre)}" ${n?'disabled title="Tiene personas asignadas"':""}>Quitar</button>`:""}</td></tr>`}).join("")||`<tr><td colspan="6" class="empty">Sin supervisores.</td></tr>`
+  }</tbody></table></div></div>
+  ${orphan.length?`<div class="banner">Hay personas con supervisor que no está en el catálogo: ${orphan.map(esc).join(", ")}.</div>`:""}`;
 }
 function catLista(c){
   const C=cfg(),arr=C[c.key]||[];
@@ -398,6 +424,85 @@ function catCerts(){
   <div class="panel"><h2>Vencimientos <span class="sub">vencidas y próximos 60 días</span></h2><div class="scroll">${exp.length?`<table><thead><tr><th>Persona</th><th>Certificación</th><th>Vence</th><th>Turno</th><th>Celular</th></tr></thead><tbody>${exp.map(({e,c})=>`<tr class="click" data-emp="${esc(e.num)}"><td>${esc(e.nombre)}</td><td>${esc(c.nombre)}${c.folio?` <span class="mono muted">${esc(c.folio)}</span>`:""}</td><td><span class="chip ${c.vence<on?"bad":"warn"}">${c.vence<on?"Vencida ":""}${fmtD(c.vence)}</span></td><td>${esc(e.turno)}</td><td class="tel">${esc(e.celular||"—")}</td></tr>`).join("")}</tbody></table>`:`<div class="empty">Nada vence en los próximos 60 días.</div>`}</div></div>
   <div class="panel"><h2>Sin la certificación que pide su posición</h2><div class="scroll">${miss.length?`<table><thead><tr><th>Persona</th><th>Posición</th><th>Le falta</th><th>Turno</th></tr></thead><tbody>${miss.map(({e,m})=>`<tr class="click" data-emp="${esc(e.num)}"><td>${esc(e.nombre)}</td><td>${esc(e.posicion)}</td><td>${m.map(n=>`<span class="chip warn">${esc(n)}</span>`).join(" ")}</td><td>${esc(e.turno)}</td></tr>`).join("")}</tbody></table>`:`<div class="empty">Todos tienen las certificaciones que pide su posición.</div>`}</div></div>`;
 }
+/* ---------- Movimientos (cambio de supervisor) ---------- */
+const pendingFor=num=>S.movs.find(m=>m.num===num&&m.estado==="pendiente");
+const gestiona=()=>S.perms.has("gestionar_movimientos");
+function canRequestFor(e){return gestiona()||mySups().length>0}
+function iApprove(m){if(m.estado!=="pendiente")return false;if(gestiona())return true;const my=mySups();return m.tipo==="pase"?my.includes(m.a_supervisor):my.includes(m.de_supervisor)}
+const pendingToApprove=()=>S.movs.filter(iApprove).length;
+const fmtTs=t=>t?new Date(t).toLocaleString("es-MX",{day:"numeric",month:"short",hour:"2-digit",minute:"2-digit"}):"";
+const TIPO_LBL={pase:"Pase",solicitud:"Solicitud"},EST_CLS={pendiente:"warn",aprobado:"ok",rechazado:"bad",cancelado:""};
+function movCard(m,acciones){
+  const e=S.emps.get(m.num)||{nombre:m.num};
+  const quien=m.tipo==="pase"?`Lo pasa ${esc(m.de_supervisor||"sin supervisor")} · aprueba ${esc(m.a_supervisor)}`:`Lo pide ${esc(m.a_supervisor)} · aprueba ${esc(m.de_supervisor||"—")}`;
+  return `<div class="mov tipo-${m.tipo}"><div class="row" style="justify-content:space-between"><h4>${esc(e.nombre)}</h4><span class="chip ${m.tipo==="pase"?"warn":"acc"}">${TIPO_LBL[m.tipo]}</span></div>
+    <div class="small muted">${esc(e.num||"")} · ${esc(e.posicion||"")} · ${esc(e.turno||"")}</div>
+    <div class="ruta"><b>${esc(m.de_supervisor||"Sin supervisor")}</b><span aria-hidden="true">→</span><b>${esc(m.a_supervisor)}</b></div>
+    ${m.motivo?`<div style="font-size:13px">“${esc(m.motivo)}”</div>`:""}
+    <div class="meta">${quien}<br>Solicitó ${esc(m.solicitado_email||"")} · ${fmtTs(m.creado)}</div>
+    ${acciones||""}</div>`;
+}
+function renderMovimientos(){
+  const root=$("#mov-root");const my=mySups(),gest=gestiona();
+  if(!S.movsLoaded){root.innerHTML=`<div class="panel empty">Cargando movimientos…</div>`;return}
+  const pend=S.movs.filter(m=>m.estado==="pendiente");
+  const toMe=pend.filter(iApprove),mine=pend.filter(m=>m.solicitado_por===S.session.user.id&&!iApprove(m)),others=pend.filter(m=>!iApprove(m)&&m.solicitado_por!==S.session.user.id);
+  const hist=S.movs.filter(m=>m.estado!=="pendiente").slice(0,100);
+  const puede=gest||my.length>0;
+  root.innerHTML=`
+  <div class="rep-top"><div class="small muted">${my.length?`Eres supervisor de: <b>${my.map(esc).join(", ")}</b>`:gest?"Puedes pedir y aprobar movimientos de cualquier equipo.":"Tu cuenta no está ligada a ningún supervisor. Pide al administrador que ponga tu correo en Catálogos → Supervisores."}</div>
+    ${puede?`<div class="row"><button class="btn primary" data-movnew="pase">Pasar persona a otro supervisor</button><button class="btn" data-movnew="solicitud">Solicitar persona</button></div>`:""}</div>
+  <div class="panel"><div class="ph"><h3>Por aprobar</h3><span class="chip ${toMe.length?"warn":""}">${toMe.length}</span></div><div class="pb">${toMe.length?`<div class="movs">${toMe.map(m=>movCard(m,`<textarea data-movcom="${m.id}" placeholder="Comentario (opcional)" aria-label="Comentario"></textarea><div class="row"><button class="btn primary" data-movok="${m.id}">Aprobar</button><button class="btn danger" data-movno="${m.id}">Rechazar</button></div>`)).join("")}</div>`:`<div class="empty" style="padding:12px">No tienes movimientos por aprobar.</div>`}</div></div>
+  <div class="panel"><div class="ph"><h3>Mis solicitudes pendientes</h3><span class="chip">${mine.length}</span></div><div class="pb">${mine.length?`<div class="movs">${mine.map(m=>movCard(m,`<div><button class="btn danger" data-movcan="${m.id}">Cancelar solicitud</button></div>`)).join("")}</div>`:`<div class="empty" style="padding:12px">No tienes solicitudes pendientes.</div>`}</div></div>
+  ${others.length?`<div class="panel"><div class="ph"><h3>Otros pendientes</h3><span class="chip">${others.length}</span></div><div class="pb"><div class="movs">${others.map(m=>movCard(m)).join("")}</div></div></div>`:""}
+  <div class="panel" style="padding:0"><div class="ph"><h3>Historial</h3><span class="small muted">Últimos ${hist.length} movimientos resueltos</span></div><div class="scroll"><table><thead><tr><th>Fecha</th><th>Persona</th><th>Tipo</th><th>De</th><th>A</th><th>Estado</th><th>Resolvió</th><th>Comentario</th></tr></thead><tbody>${
+    hist.length?hist.map(m=>{const e=S.emps.get(m.num)||{nombre:m.num};return `<tr><td class="nw small">${fmtTs(m.resuelto_en||m.creado)}</td><td>${esc(e.nombre)}</td><td>${TIPO_LBL[m.tipo]}</td><td class="small">${esc(m.de_supervisor)}</td><td class="small">${esc(m.a_supervisor)}</td><td><span class="chip ${EST_CLS[m.estado]}">${esc(m.estado)}</span></td><td class="small">${esc(m.resuelto_email||"")}</td><td class="small">${esc(m.comentario||m.motivo||"")}</td></tr>`}).join("")
+    :`<tr><td colspan="8" class="empty">Sin movimientos resueltos todavía.</td></tr>`}</tbody></table></div></div>`;
+}
+function openMovModal(tipo,num){
+  const my=mySups(),gest=gestiona(),sups=S.sups.filter(x=>x.activo!==false).map(x=>x.nombre);
+  const busy=new Set(S.movs.filter(m=>m.estado==="pendiente").map(m=>m.num));
+  const ppl=active().filter(e=>!busy.has(e.num)&&(tipo==="pase"?(gest||my.includes(e.supervisor)):(gest||!my.includes(e.supervisor)))).sort((a,b)=>a.nombre.localeCompare(b.nombre));
+  const destinos=tipo==="pase"?sups:(gest?sups:my);
+  const root=$("#modal-root");
+  root.innerHTML=`<div class="modal-scrim"><div class="panel modal" role="dialog" aria-modal="true" aria-labelledby="mv-t" style="width:min(520px,100%)">
+    <div class="ph"><h3 id="mv-t">${tipo==="pase"?"Pasar persona a otro supervisor":"Solicitar persona de otro supervisor"}</h3><button class="btn" id="mv-x">Cancelar</button></div>
+    <form class="pb" id="f-mv" style="display:grid;gap:12px">
+      <p class="small muted" style="margin:0">${tipo==="pase"?"El supervisor que la recibe debe aprobar el pase.":"El supervisor actual de la persona debe aprobar soltarla."} Hasta que se apruebe, la persona sigue con su supervisor actual.</p>
+      <div class="field"><label for="mv-num">Persona</label><select id="mv-num" required>${ppl.length?"":'<option value="">No hay personas disponibles</option>'}${ppl.map(e=>`<option value="${esc(e.num)}" ${e.num===num?"selected":""}>${esc(e.nombre)} · ${esc(e.supervisor||"sin supervisor")}</option>`).join("")}</select></div>
+      <div class="field"><label for="mv-dest">${tipo==="pase"?"Pasar a":"Para el equipo de"}</label><select id="mv-dest" required></select></div>
+      <div class="field"><label for="mv-mot">Motivo</label><textarea id="mv-mot" placeholder="Ej. apoyo en otra línea, cambio de turno, balanceo de equipo"></textarea></div>
+      <div id="mv-err" style="color:var(--bad);font-size:13px;min-height:1.2em"></div>
+      <div class="row" style="justify-content:flex-end"><button class="btn primary" ${ppl.length&&destinos.length?"":"disabled"}>Enviar solicitud</button></div></form></div></div>`;
+  const fillDest=()=>{const e=S.emps.get($("#mv-num").value);const cur=e?e.supervisor:"";$("#mv-dest").innerHTML=destinos.filter(x=>x!==cur).map(x=>`<option>${esc(x)}</option>`).join("")||'<option value="">Sin opciones</option>'};
+  fillDest();$("#mv-num").onchange=fillDest;
+  $("#mv-x").onclick=()=>root.innerHTML="";
+  $("#f-mv").onsubmit=async ev=>{ev.preventDefault();const btn=ev.target.querySelector("button.primary");btn.disabled=true;
+    const {error}=await S.sb.rpc("solicitar_movimiento",{p_num:$("#mv-num").value,p_tipo:tipo,p_destino:$("#mv-dest").value,p_motivo:$("#mv-mot").value.trim()});
+    if(error){$("#mv-err").textContent=error.message;btn.disabled=false;return}
+    root.innerHTML="";toast("Solicitud enviada");await loadMovs();
+    if(S.tab!=="movimientos")location.hash="movimientos";};
+}
+async function loadMovs(){
+  const {data,error}=await S.sb.from("movimientos").select("*").order("creado",{ascending:false}).limit(500);
+  if(!error){S.movs=data||[];S.movsLoaded=true}else{S.movsLoaded=true;S.movs=[]}
+  renderNav();renderActive();
+}
+async function loadSups(){const {data,error}=await S.sb.from("supervisores").select("*").order("nombre");S.sups=error?[]:(data||[]);S.supsDb=!error;refreshSelects()}
+$("#v-movimientos").addEventListener("click",async e=>{
+  const n=e.target.closest("[data-movnew]");if(n){openMovModal(n.dataset.movnew);return}
+  const ok=e.target.closest("[data-movok],[data-movno]");
+  if(ok){const id=ok.dataset.movok||ok.dataset.movno,ap=!!ok.dataset.movok,com=($(`[data-movcom="${id}"]`)||{}).value||"";
+    if(!ap&&!com.trim()){toast("Escribe el motivo del rechazo en el comentario");return}
+    ok.disabled=true;const {error}=await S.sb.rpc("resolver_movimiento",{p_id:id,p_aprobar:ap,p_comentario:com.trim()});
+    if(error){toast(error.message);ok.disabled=false;return}
+    toast(ap?"Movimiento aprobado":"Movimiento rechazado");await loadMovs();
+    if(ap){const {data}=await S.sb.from("empleados").select("*");if(data){S.emps=new Map(data.map(r=>[r.num,r]));refreshSelects();renderActive()}}return}
+  const c=e.target.closest("[data-movcan]");
+  if(c){if(c.dataset.confirm!=="1"){c.dataset.confirm="1";c.textContent="¿Seguro? Clic de nuevo";return}
+    const {error}=await S.sb.rpc("cancelar_movimiento",{p_id:c.dataset.movcan});if(error){toast(error.message);return}toast("Solicitud cancelada");loadMovs()}
+});
+
 /* ---------- Usuarios y permisos por rol (solo admin) ---------- */
 let PD=null; // borrador de permisos {rol:Set}
 function permDraft(){if(!PD)PD=Object.fromEntries(S.roles.filter(r=>r.nombre!=="admin").map(r=>[r.nombre,new Set(r.permisos||[])]));return PD}
@@ -442,7 +547,7 @@ function renderActive(){
   if(!S.tabs||!S.tabs.length)return;
   if(S.tab==="cobertura")renderCobertura();else if(S.tab==="lista")renderLista();else if(S.tab==="personal")renderPersonal();
   else if(S.tab==="reportes"){if(window.CPR)window.CPR.render($("#rep-root"))}
-  else if(S.tab==="usuarios")renderUsuarios();else renderCatalogos();
+  else if(S.tab==="usuarios")renderUsuarios();else if(S.tab==="movimientos")renderMovimientos();else renderCatalogos();
 }
 function setTab(t){
   if(t==="certificaciones"){S.cat="certificaciones";t="catalogos"}else if(t==="ajustes")t="catalogos";
@@ -464,7 +569,7 @@ function renderBanner(msg){
 window.addEventListener("hashchange",()=>setTab(location.hash.slice(1)));
 function renderNav(){
   const pend=S.isAdmin?S.users.filter(u=>u.rol==="sin_acceso").length:0;
-  $("#tabs").innerHTML=(S.tabs||[]).map(t=>`<button data-tab="${t}" aria-current="${S.tab===t?"page":"false"}" title="${esc(TABS[t].label)}" aria-label="${esc(TABS[t].label)}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${TABS[t].icon}</svg><span class="t">${esc(TABS[t].label)}</span>${t==="usuarios"&&pend?`<span class="tab-n" title="${pend} cuenta(s) sin acceso">${pend}</span>`:""}</button>`).join("");
+  $("#tabs").innerHTML=(S.tabs||[]).map(t=>`<button data-tab="${t}" aria-current="${S.tab===t?"page":"false"}" title="${esc(TABS[t].label)}" aria-label="${esc(TABS[t].label)}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${TABS[t].icon}</svg><span class="t">${esc(TABS[t].label)}</span>${t==="usuarios"&&pend?`<span class="tab-n" title="${pend} cuenta(s) sin acceso">${pend}</span>`:""}${t==="movimientos"&&pendingToApprove()?`<span class="tab-n" title="Por aprobar">${pendingToApprove()}</span>`:""}</button>`).join("");
   $("#who").innerHTML=`<span class="nm" title="${esc(S.session?S.session.user.email:"")}">${esc(S.session?S.session.user.email:"")}</span><span class="role">${esc(ROLE_LABEL(S.rol))}</span>
     <div class="acts"><button id="chpass" title="Cambiar contraseña" aria-label="Cambiar contraseña"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="8" cy="15" r="4"/><path d="M11 12l9-9M17 6l3 3M15 8l2 2"/></svg><span class="t">Contraseña</span></button>
     <button id="logout" title="Salir" aria-label="Salir"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 4h4v16h-4M10 8l-4 4 4 4M6 12h10"/></svg><span class="t">Salir</span></button></div>`;
@@ -518,12 +623,12 @@ $("#cov-edit").addEventListener("click",()=>{S.editReq=!S.editReq;$("#cov-edit")
 $("#cov-matrix").addEventListener("click",e=>{const b=e.target.closest("[data-cell]");if(!b)return;S.sel=S.sel===b.dataset.cell?null:b.dataset.cell;renderCobertura();if(S.sel)$("#cov-detail").scrollIntoView({block:"nearest",behavior:"smooth"})});
 $("#cov-matrix").addEventListener("change",e=>{const i=e.target.closest("[data-req]");if(!i)return;
   const v=i.value===""?null:Math.max(0,parseInt(i.value,10)||0);cfgUpdate({req:{[S.dim]:{[i.dataset.req]:v}}})});
-["#l-turno","#l-pos","#l-area","#l-sitio"].forEach(s=>$(s).addEventListener("change",renderLista));
+["#l-turno","#l-pos","#l-area","#l-sitio","#l-sup"].forEach(s=>$(s).addEventListener("change",renderLista));
 $("#l-q").addEventListener("input",renderLista);
 $("#l-list").addEventListener("click",e=>{const b=e.target.closest("[data-mark]");if(b&&S.canMark)mark(b.dataset.emp,b.dataset.mark)});
 $("#l-all").addEventListener("click",markAll);
 $("#p-q").addEventListener("input",renderPersonal);
-["#p-turno","#p-pos","#p-area","#p-sitio","#p-ger","#p-bajas"].forEach(s=>$(s).addEventListener("change",renderPersonal));
+["#p-turno","#p-pos","#p-area","#p-sitio","#p-ger","#p-sup","#p-bajas"].forEach(s=>$(s).addEventListener("change",renderPersonal));
 $("#p-new").addEventListener("click",()=>openEmp(null));
 document.addEventListener("click",e=>{const r=e.target.closest("tr[data-emp]");if(r&&!e.target.closest("button,select,input"))openEmp(r.dataset.emp)});
 $("#drawer-root").addEventListener("click",e=>{
@@ -531,6 +636,7 @@ $("#drawer-root").addEventListener("click",e=>{
   if(e.target.id==="f-addcert"){readForm();D.data.certs=D.data.certs||[];D.data.certs.push({nombre:cfg().certs[0],folio:"",vence:""});renderDrawer();return}
   const del=e.target.closest("[data-cdel]");if(del){readForm();D.data.certs.splice(+del.dataset.cdel,1);renderDrawer();return}
   if(e.target.id==="f-save")saveEmp();
+  if(e.target.id==="f-mov"){const n=D.data.num;closeDrawer();openMovModal(mySups().includes(S.emps.get(n).supervisor)||S.perms.has("gestionar_movimientos")?"pase":"solicitud",n)}
 });
 document.addEventListener("keydown",e=>{if(e.key==="Escape"&&D)closeDrawer()});
 const CV=$("#v-catalogos");
@@ -540,6 +646,10 @@ CV.addEventListener("click",e=>{
   const a=e.target.closest("[data-add]");
   if(a){const k=a.dataset.add;const v=$("#cat-new").value.trim();if(!v)return;
     const arr=cfg()[k]||[];if(arr.includes(v)){toast("Ya existe");return}cfgUpdate({[k]:arr.concat([v])});return}
+  if(e.target.id==="sup-add"){addSup();return}
+  const sd=e.target.closest("[data-supdel]");
+  if(sd){if(sd.dataset.confirm!=="1"){sd.dataset.confirm="1";sd.textContent="¿Seguro?";setTimeout(()=>{if(sd.isConnected){sd.dataset.confirm="";sd.textContent="Quitar"}},3000);return}
+    S.sb.from("supervisores").delete().eq("nombre",sd.dataset.supdel).then(({error})=>{if(error)toast(errMsg(error));else{S.sups=S.sups.filter(x=>x.nombre!==sd.dataset.supdel);refreshSelects();renderActive();toast("Supervisor quitado")}});return}
   const d=e.target.closest("[data-ldel],[data-certdel]");
   if(d){
     if(d.dataset.confirm!=="1"){d.dataset.confirm="1";d.textContent="¿Seguro?";setTimeout(()=>{if(d.isConnected){d.dataset.confirm="";d.textContent="Quitar"}},3000);return}
@@ -579,6 +689,12 @@ UV.addEventListener("change",async e=>{
   if(s){const {error}=await S.sb.from("perfiles").update({rol:s.value}).eq("id",s.dataset.urol);
     if(error)toast(errMsg(error));else{const u=S.users.find(x=>x.id===s.dataset.urol);if(u)u.rol=s.value;toast("Rol actualizado");renderUsuarios();renderNav()}}
 });
+async function addSup(){
+  const nombre=$("#sup-nombre").value.trim(),email=$("#sup-email").value.trim().toLowerCase(),gerente=$("#sup-ger").value;
+  if(!nombre){toast("Escribe el nombre");return}if(S.sups.some(x=>x.nombre.toLowerCase()===nombre.toLowerCase())){toast("Ese supervisor ya existe");return}
+  const {data,error}=await S.sb.from("supervisores").insert({nombre,email,gerente}).select().single();
+  if(error){toast(errMsg(error));return}S.sups.push(data);S.sups.sort((a,b)=>a.nombre.localeCompare(b.nombre));refreshSelects();renderActive();toast("Supervisor agregado");
+}
 async function addRole(){
   const v=($("#role-new").value||"").trim().toLowerCase();if(!v)return;
   if(S.roles.some(r=>r.nombre===v)){toast("Ese rol ya existe");return}
@@ -594,6 +710,10 @@ async function delRole(n){
 CV.addEventListener("change",async e=>{
   const c=e.target.closest("[data-creq]");
   if(c){const p=c.dataset.creq;const vals=[...CV.querySelectorAll("[data-creq]")].filter(x=>x.dataset.creq===p&&x.checked).map(x=>x.value);cfgUpdate({certReq:{[p]:vals}});return}
+  const sf=e.target.closest("[data-sup]");
+  if(sf){const k=sf.dataset.sf,v=k==="activo"?sf.checked:sf.value.trim().toLowerCase&&k==="email"?sf.value.trim().toLowerCase():sf.value;
+    const {error}=await S.sb.from("supervisores").update({[k]:v}).eq("nombre",sf.dataset.sup);
+    if(error){toast(errMsg(error));return}const x=S.sups.find(y=>y.nombre===sf.dataset.sup);if(x)x[k]=v;toast("Supervisor actualizado");refreshSelects();renderActive();return}
   const f=e.target.closest("[data-perf]");
   if(f){cfgUpdate({perfiles:{[f.dataset.perf]:{[f.dataset.pf]:f.value.trim()}}});toast("Perfil guardado");return}
 });
@@ -630,7 +750,7 @@ async function startApp(session){
   if(c.data)S.cfg=Object.assign({},DEFAULT_CFG,c.data.data);
   if(e.error){renderBanner(`<div class="banner">No se pudo cargar el personal: ${esc(e.error.message)}</div>`)}
   S.emps=new Map((e.data||[]).map(r=>[r.num,r]));
-  S.loaded=true;refreshSelects();
+  S.loaded=true;await loadSups();refreshSelects();loadMovs();
   await loadAttendance();
   if(S.isAdmin){const {data}=await S.sb.from("perfiles").select("id,email,rol").order("email");S.users=data||[];renderNav();renderActive()}
   subscribe();
@@ -675,13 +795,15 @@ function subscribe(){
       if(p.eventType==="DELETE")S.emps.delete(p.old.num);else S.emps.set(p.new.num,p.new);refreshSelects();renderActive();
     })
     .on("postgres_changes",{event:"*",schema:"public",table:"roles"},()=>{loadRoles().then(renderActive)})
+    .on("postgres_changes",{event:"*",schema:"public",table:"movimientos"},()=>{loadMovs()})
+    .on("postgres_changes",{event:"*",schema:"public",table:"supervisores"},()=>{loadSups().then(renderActive)})
     .on("postgres_changes",{event:"*",schema:"public",table:"config"},p=>{
       if(p.new&&p.new.data){S.cfg=Object.assign({},DEFAULT_CFG,p.new.data);refreshSelects();renderActive()}
     })
     .subscribe();
 }
 
-window.CP={S,cfg,active,ST,PRESENT,sitioCorto,turnosUsed,listUsed,missingCerts,toast,renderActive:()=>renderActive()};
+window.CP={S,cfg,active,ST,PRESENT,sitioCorto,turnosUsed,listUsed,supsUsed,missingCerts,toast,renderActive:()=>renderActive()};
 /* ---------- boot ---------- */
 (function boot(){
   const C=window.CP_CONFIG||{};

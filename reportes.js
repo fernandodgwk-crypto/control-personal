@@ -12,6 +12,7 @@ const REPORTES={
   detalle:"Asistencia detallada",
   persona:"Ausentismo por persona",
   cobertura:"Cobertura por día, turno y posición",
+  movimientos:"Cambios de supervisor",
   plantilla:"Plantilla actual",
   certs:"Certificaciones"
 };
@@ -35,7 +36,7 @@ function weekDates(w){const m=/^(\d{4})-W(\d{2})$/.exec(w||"");if(!m)return null
 function weekOptions(sel){const ws=[];for(let i=0;i<26;i++)ws.push(isoWeek(addDays(today(),-7*i)));if(sel&&!ws.includes(sel))ws.push(sel);
   return ws.map(w=>{const r=weekDates(w);return `<option value="${w}" ${w===sel?"selected":""}>Sem ${+w.slice(6)} · ${fmtDia(r.desde)} – ${fmtDia(r.hasta)}</option>`}).join("")}
 
-const R={modo:"semana",fecha:today(),semana:isoWeek(today()),desde:addDays(today(),-6),hasta:today(),turno:"",sitio:"",gerente:"",grupo:"posicion",sub:"resumen",rep:"diario"};
+const R={modo:"semana",fecha:today(),semana:isoWeek(today()),desde:addDays(today(),-6),hasta:today(),turno:"",sitio:"",gerente:"",sup:"",grupo:"posicion",sub:"resumen",rep:"diario"};
 try{const s=JSON.parse(localStorage.getItem("cp_rep")||"{}");["modo","grupo","sub","rep"].forEach(k=>{if(s[k])R[k]=s[k]})}catch(e){}
 const save=()=>{try{localStorage.setItem("cp_rep",JSON.stringify({modo:R.modo,grupo:R.grupo,sub:R.sub,rep:R.rep}))}catch(e){}};
 
@@ -92,7 +93,7 @@ function barChart(cats,{titulo="",alto=210,series=SERIES}={}){
 const empty=()=>({A:0,R:0,F:0,P:0,V:0,I:0});
 function tally(list,keyFn){const m=new Map();list.forEach(x=>{const k=keyFn(x);if(k==null)return;const o=m.get(k)||Object.assign({key:k},empty());o[x.estado]++;m.set(k,o)});return m}
 const presentes=o=>o.A+o.R, registrados=o=>o.A+o.R+o.F+o.P+o.V+o.I, ausentismo=o=>o.F+o.P+o.I;
-function filtroEmp(e){return (!R.sitio||e.sitio===R.sitio)&&(!R.gerente||e.gerente===R.gerente)}
+function filtroEmp(e){return (!R.sitio||e.sitio===R.sitio)&&(!R.gerente||e.gerente===R.gerente)&&(!R.sup||e.supervisor===R.sup)}
 function grupoVal(e,g){return (g==="sitio"?C.sitioCorto(e.sitio):e[g])||"Sin asignar"}
 function rowsFiltradas(rows){
   return rows.map(r=>{const e=C.S.emps.get(r.num)||{num:r.num,nombre:"(no está en el personal)",turno:r.turno};return Object.assign({},r,{turno:r.turno||e.turno,emp:e})})
@@ -128,6 +129,13 @@ function buildReport(rows,dias){
       if(!q&&!pl)return;const o=pres.get(f+"|"+t+"|"+p),n=o?presentes(o):0;
       out.push([f,t,p,q,n,Math.max(0,q-n),n>=q?"Cubierta":"Descubierta"])})));
     return{cols:[{h:"Fecha",mono:1},{h:"Turno"},{h:"Posición"},{h:"Requeridos",num:1},{h:"Presentes",num:1},{h:"Faltan",num:1},{h:"Estado",fmt:v=>`<span class="chip ${v==="Cubierta"?"ok":"bad"}">${esc(v)}</span>`}],rows:out};
+  }
+  if(tipo==="movimientos"){
+    const d0=dias[0],d1=dias[dias.length-1];
+    const list=(C.S.movs||[]).filter(m=>{const f=(m.creado||"").slice(0,10);const e=C.S.emps.get(m.num)||{};return f>=d0&&f<=d1&&(!R.sup||m.de_supervisor===R.sup||m.a_supervisor===R.sup)&&(!R.turno||e.turno===R.turno)&&(!R.sitio||e.sitio===R.sitio)&&(!R.gerente||e.gerente===R.gerente)});
+    const t=s=>s?new Date(s).toLocaleString("es-MX",{dateStyle:"short",timeStyle:"short"}):"";
+    return{cols:[{h:"Solicitado",mono:1},{h:"No. empleado",mono:1},{h:"Nombre"},{h:"Tipo"},{h:"De"},{h:"A"},{h:"Motivo"},{h:"Solicitó"},{h:"Estado"},{h:"Resolvió"},{h:"Resuelto",mono:1},{h:"Comentario"}],
+      rows:list.map(m=>{const e=C.S.emps.get(m.num)||{nombre:""};return [t(m.creado),m.num,e.nombre,m.tipo==="pase"?"Pase":"Solicitud",m.de_supervisor,m.a_supervisor,m.motivo||"",m.solicitado_email||"",m.estado,m.resuelto_email||"",t(m.resuelto_en),m.comentario||""]})};
   }
   if(tipo==="plantilla"){
     const list=plantillaFiltrada().sort((a,b)=>a.nombre.localeCompare(b.nombre));
@@ -179,6 +187,7 @@ function filtrosHtml(conPeriodo){
       :`<div class="fld"><label for="r-desde">Desde</label><input type="date" id="r-desde" value="${R.desde}"></div><div class="fld"><label for="r-hasta">Hasta</label><input type="date" id="r-hasta" value="${R.hasta}"></div>`}`:""}
     <div class="fld"><label for="r-turno">Turno</label><select id="r-turno"><option value="">Todos</option>${T.map(t=>`<option ${R.turno===t?"selected":""}>${esc(t)}</option>`).join("")}</select></div>
     <div class="fld"><label for="r-sitio">Sitio</label><select id="r-sitio"><option value="">Todos</option>${sit.map(s=>`<option value="${esc(s)}" ${R.sitio===s?"selected":""}>${esc(C.sitioCorto(s))}</option>`).join("")}</select></div>
+    <div class="fld"><label for="r-sup">Supervisor</label><select id="r-sup"><option value="">Todos</option>${C.supsUsed().map(g=>`<option ${R.sup===g?"selected":""}>${esc(g)}</option>`).join("")}</select></div>
     <div class="fld"><label for="r-gerente">Gerente</label><select id="r-gerente"><option value="">Todos</option>${ger.map(g=>`<option ${R.gerente===g?"selected":""}>${esc(g)}</option>`).join("")}</select></div>
   </div>`;
 }
@@ -257,7 +266,7 @@ function bind(root,rep,p){
   const on=(id,fn)=>{const el=root.querySelector("#"+id);if(el)el.onchange=e=>{fn(e.target.value);save();C.renderActive()}};
   on("r-modo",v=>R.modo=v);on("r-fecha",v=>{if(v)R.fecha=v});on("r-semana",v=>{if(v)R.semana=v});
   on("r-desde",v=>{if(v)R.desde=v});on("r-hasta",v=>{if(v)R.hasta=v});on("r-turno",v=>R.turno=v);
-  on("r-sitio",v=>R.sitio=v);on("r-gerente",v=>R.gerente=v);on("r-tipo",v=>R.rep=v);on("r-grupo",v=>R.grupo=v);
+  on("r-sitio",v=>R.sitio=v);on("r-sup",v=>R.sup=v);on("r-gerente",v=>R.gerente=v);on("r-tipo",v=>R.rep=v);on("r-grupo",v=>R.grupo=v);
   root.querySelectorAll("[data-rsub]").forEach(b=>b.onclick=()=>{R.sub=b.dataset.rsub;save();C.renderActive()});
   if(rep){
     const name=`reporte_${R.rep}${SIN_PERIODO.has(R.rep)?"_"+today():`_${p.desde}_a_${p.hasta}`}`,aoa=()=>[rep.cols.map(c=>c.h),...rep.rows];
