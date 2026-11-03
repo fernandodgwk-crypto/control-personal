@@ -9,7 +9,7 @@ const pad=n=>String(n).padStart(2,"0");
 const ymd=d=>d.getFullYear()+"-"+pad(d.getMonth()+1)+"-"+pad(d.getDate());
 const addDays=(s,n)=>{const d=new Date(s+"T12:00:00");d.setDate(d.getDate()+n);return ymd(d)};
 const fmtD=s=>{if(!s)return"";const [y,m,d]=String(s).slice(0,10).split("-");return d+"/"+m+"/"+y};
-const VIEWS=["cobertura","lista","personal","movimientos","vacaciones","reportes","catalogos","usuarios"];
+const VIEWS=["cobertura","lista","personal","movimientos","vacaciones","reportes","catalogos","usuarios","equipos"];
 const sitioCorto=x=>String(x||"").replace(/^MX Guadalajara North\s*/i,"")||String(x||"");
 
 const S={sb:null,session:null,rol:"lector",perms:new Set(),sups:[],movs:[],movsLoaded:false,prog:[],progLoaded:false,recent:{},avisos:[],covScope:null,isAdmin:false,canMark:false,canPersonal:false,canCatalog:false,canReq:false,roles:[],emps:new Map(),cfg:null,att:{},date:ymd(new Date()),
@@ -30,27 +30,30 @@ const TABS={
   vacaciones:{label:"Vacaciones y descansos",sub:"Vacaciones, descansos laborados con su descanso compensatorio y control RBA (máximo 6 días seguidos sin descanso).",icon:'<rect x="3" y="4" width="18" height="17" rx="2"/><path d="M3 9h18M8 2v4M16 2v4M8 14h3M8 17h6"/>'},
   reportes:{label:"Reportes",sub:"Asistencia, ausentismo y cobertura por periodo, con gráficas y descarga a Excel o CSV.",icon:'<path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/>'},
   catalogos:{label:"Catálogos",sub:"Perfiles, certificaciones, supervisores, áreas, sitios, gerentes y turnos.",icon:'<path d="M4 4h6v6H4zM4 14h6v6H4z"/><path d="M14 6h7M14 9h5M14 16h7M14 19h5"/>'},
+  equipos:{label:"Equipos",sub:"Transpaletas, montacargas y herramientas: registro, checklist diario, reparaciones con Gantt, escalación, owners por turno y revisión semanal.",icon:'<path d="M3 17h11V7H3zM14 11h4l3 3v3h-7"/><circle cx="7" cy="18" r="2"/><circle cx="17" cy="18" r="2"/>'},
   usuarios:{label:"Usuarios",sub:"Quién entra a la app y qué puede hacer cada rol.",icon:'<rect x="4" y="3" width="16" height="18" rx="2"/><circle cx="12" cy="10" r="3"/><path d="M8 17c1-2 2.5-3 4-3s3 1 4 3"/>'}
 };
-const TAB_ORDER=["cobertura","lista","personal","movimientos","vacaciones","reportes","catalogos"];
+const TAB_ORDER=["cobertura","lista","personal","movimientos","vacaciones","reportes","catalogos","equipos"];
 const PRIVS=[
   ...TAB_ORDER.map(t=>({k:"tab:"+t,g:"Pestañas que ve",l:TABS[t].label})),
   {k:"pasar_lista",g:"Acciones",l:"Pasar lista (asistencia, retardos, faltas, permisos, vacaciones, incapacidades)",tab:"lista"},
   {k:"editar_personal",g:"Acciones",l:"Editar personal (altas, bajas, fichas, celular, certificaciones)",tab:"personal"},
   {k:"editar_requeridos",g:"Acciones",l:"Editar requeridos de la cobertura",tab:"cobertura"},
   {k:"editar_catalogos",g:"Acciones",l:"Editar catálogos (perfiles, supervisores, áreas, sitios, gerentes, turnos, certificaciones)",tab:"catalogos"},
+  {k:"equipos_operar",g:"Acciones",l:"Equipos: checklist diario y reportar o dar seguimiento a fallas",tab:"equipos"},
+  {k:"equipos_admin",g:"Acciones",l:"Equipos: registro, proveedores, owners por turno, escalación y revisión semanal",tab:"equipos"},
   {k:"gestionar_movimientos",g:"Acciones",l:"Pedir y aprobar cambios de supervisor y programar vacaciones de cualquier equipo (gerencia)",tab:"movimientos"}
 ];
 const ROLE_DEFAULTS={
-  supervisor:["tab:cobertura","tab:lista","tab:personal","tab:movimientos","tab:vacaciones","tab:reportes","pasar_lista"],
-  lector:["tab:cobertura","tab:personal","tab:reportes"],
+  supervisor:["tab:cobertura","tab:lista","tab:personal","tab:movimientos","tab:vacaciones","tab:reportes","tab:equipos","pasar_lista","equipos_operar"],
+  lector:["tab:cobertura","tab:personal","tab:reportes","tab:equipos"],
   sin_acceso:[]
 };
 const ROLE_LABEL=r=>({admin:"Administrador",supervisor:"Supervisor",lector:"Lector",sin_acceso:"Sin acceso"})[r]||r;
 const DEFAULT_ROLES=[{nombre:"admin",permisos:PERMS.map(p=>p.id)},{nombre:"supervisor",permisos:ROLE_DEFAULTS.supervisor},{nombre:"lector",permisos:ROLE_DEFAULTS.lector}];
 // Pestañas de un rol. Roles creados antes de que existieran permisos de pestaña ven todo menos Usuarios.
 function tabsOfRole(nombre,permisos){
-  if(nombre==="admin")return [...TAB_ORDER,"usuarios"];
+  if(nombre==="admin")return [...TAB_ORDER.filter(t=>t!=="equipos"),"usuarios","equipos"];
   if(nombre==="sin_acceso")return [];
   const p=permisos||[];
   if(!p.some(x=>x.startsWith("tab:")))return TAB_ORDER.slice();
@@ -698,7 +701,7 @@ function openAvisos(){
   root.innerHTML=`<div class="modal-scrim"><div class="panel modal" role="dialog" aria-modal="true" aria-labelledby="av-t" style="width:min(560px,100%)">
     <div class="ph"><h3 id="av-t">Avisos</h3><div class="row">${list.some(a=>!a.leido)?'<button class="btn" id="av-all">Marcar todo como leído</button>':""}<button class="btn" id="av-x">Cerrar</button></div></div>
     <div style="max-height:70vh;overflow:auto">${list.length?list.map(a=>`<div style="padding:12px 16px;border-bottom:1px solid var(--line);${a.leido?"opacity:.65":""}">
-      <div class="row" style="justify-content:space-between"><b style="font-weight:600">${a.leido?"":'<span style="color:var(--accent)">● </span>'}${esc(a.titulo)}</b><span class="chip ${a.tipo==="rba"?"bad":a.tipo==="vacaciones"?"info":"warn"}">${a.tipo==="rba"?"RBA":a.tipo==="vacaciones"?"Vacaciones":"Descanso laborado"}</span></div>
+      <div class="row" style="justify-content:space-between"><b style="font-weight:600">${a.leido?"":'<span style="color:var(--accent)">● </span>'}${esc(a.titulo)}</b><span class="chip ${a.tipo==="rba"||a.tipo==="equipo"?"bad":a.tipo==="vacaciones"?"info":"warn"}">${({rba:"RBA",vacaciones:"Vacaciones",equipo:"Equipo",descanso_laborado:"Descanso laborado"})[a.tipo]||a.tipo}</span></div>
       <div class="small" style="margin-top:4px">${esc(a.detalle)}</div><div class="small muted" style="margin-top:2px">${fmtTs(a.creado)}</div></div>`).join(""):'<div class="empty">No tienes avisos.</div>'}</div></div></div>`;
   $("#av-x").onclick=()=>root.innerHTML="";
   const all=$("#av-all");if(all)all.onclick=async()=>{const ids=S.avisos.filter(a=>!a.leido).map(a=>a.id);const {error}=await S.sb.from("avisos").update({leido:true}).in("id",ids);if(error){toast(errMsg(error));return}S.avisos.forEach(a=>a.leido=true);renderNav();openAvisos()};
@@ -748,7 +751,7 @@ function renderActive(){
   if(!S.tabs||!S.tabs.length)return;
   if(S.tab==="cobertura")renderCobertura();else if(S.tab==="lista")renderLista();else if(S.tab==="personal")renderPersonal();
   else if(S.tab==="reportes"){if(window.CPR)window.CPR.render($("#rep-root"))}
-  else if(S.tab==="usuarios")renderUsuarios();else if(S.tab==="movimientos")renderMovimientos();else if(S.tab==="vacaciones")renderVacaciones();else renderCatalogos();
+  else if(S.tab==="usuarios")renderUsuarios();else if(S.tab==="movimientos")renderMovimientos();else if(S.tab==="vacaciones")renderVacaciones();else if(S.tab==="equipos"){if(window.CPE)window.CPE.render($("#eq-root"))}else renderCatalogos();
 }
 function setTab(t){
   if(t==="certificaciones"){S.cat="certificaciones";t="catalogos"}else if(t==="ajustes")t="catalogos";

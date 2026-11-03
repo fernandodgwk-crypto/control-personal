@@ -129,6 +129,19 @@ td.mono,td.nw{white-space:nowrap}
 .modal-scrim{position:fixed;inset:0;background:#0009;display:grid;place-items:center;z-index:50;padding:16px}
 .modal{width:min(440px,100%);max-height:90vh;overflow:auto;padding:0}
 .perm-g td{background:var(--surface2)}
+.eq-subs{display:flex;flex-wrap:wrap;width:fit-content;max-width:100%}
+.gantt{overflow-x:auto;padding:8px 0}
+.g-row{display:grid;grid-template-columns:220px minmax(560px,1fr);align-items:center;min-height:34px;border-bottom:1px solid var(--line)}
+.g-row.click{cursor:pointer}.g-row.click:hover{background:var(--surface2)}
+.g-head{min-height:26px;border-bottom:1px solid var(--line)}
+.g-lbl{padding:4px 12px;font-size:13px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.g-track{position:relative;height:100%;min-height:26px;margin-right:16px}
+.g-tick{position:absolute;top:6px;font:11px var(--f-mono);color:var(--muted);transform:translateX(-50%);white-space:nowrap}
+.g-grid{position:absolute;top:0;bottom:0;border-left:1px dashed var(--line)}
+.g-today{position:absolute;top:0;bottom:0;border-left:2px solid var(--accent);z-index:2}
+.g-bar{position:absolute;top:8px;height:16px;border-radius:4px;z-index:1}
+.g-plan{position:absolute;top:8px;height:16px;border:2px dashed var(--muted);border-left:0;border-radius:0 4px 4px 0;box-sizing:border-box}
+.g-flag{position:absolute;top:5px;width:18px;height:18px;margin-left:-9px;border-radius:50%;background:var(--bad);color:#fff;font:700 12px/18px var(--f-body);text-align:center;z-index:3}
 .movs{display:grid;grid-template-columns:repeat(auto-fill,minmax(min(100%,360px),1fr));gap:12px}
 .mov{border:1px solid var(--line);border-left:5px solid var(--warn);border-radius:6px;background:var(--surface);padding:12px 14px;display:grid;gap:8px;min-width:0}
 .mov.tipo-solicitud{border-left-color:var(--accent)}
@@ -350,6 +363,7 @@ tr.click{cursor:pointer} tr.click:hover td{background:var(--surface2)}
   <section class="view" id="v-reportes" hidden><div id="rep-root" style="display:flex;flex-direction:column;gap:16px"></div></section>
   <section class="view" id="v-vacaciones" hidden><div id="vac-root" style="display:flex;flex-direction:column;gap:16px"></div></section>
   <section class="view" id="v-movimientos" hidden><div id="mov-root" style="display:flex;flex-direction:column;gap:16px"></div></section>
+  <section class="view" id="v-equipos" hidden><div id="eq-root" style="display:flex;flex-direction:column;gap:16px"></div></section>
   <section class="view" id="v-usuarios" hidden><div id="usr-root" style="display:flex;flex-direction:column;gap:16px"></div></section>
 </main>
 </div>
@@ -363,5 +377,6 @@ tr.click{cursor:pointer} tr.click:hover td{background:var(--surface2)}
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js"></script>
 <script src="app.js"></script>
 <script src="reportes.js"></script>
+<script src="equipos.js"></script>
 </body>
 </html>

@@ -62,7 +62,7 @@ function rangeData(desde,hasta){
 
 /* ---------- gráfica de barras apiladas ---------- */
 function niceMax(m){if(m<=4)return Math.max(1,m);const p=Math.pow(10,Math.floor(Math.log10(m/4))),st=[1,2,5,10].map(x=>x*p).find(s=>m/s<=5);return Math.ceil(m/st)*st}
-function barChart(cats,{titulo="",alto=210,series=SERIES}={}){
+function barChart(cats,{titulo="",alto=210,series=SERIES,sufijo="registros"}={}){
   if(!cats.length)return `<div class="empty">Sin registros en este periodo.</div>`;
   const tot=c=>series.reduce((a,s)=>a+(c[s.key]||0),0);
   const max=niceMax(Math.max(...cats.map(tot))),ticks=[0,1,2,3,4].map(i=>max*i/4).filter((v,i,a)=>Number.isInteger(v)&&a.indexOf(v)===i);
@@ -73,7 +73,7 @@ function barChart(cats,{titulo="",alto=210,series=SERIES}={}){
       ${ticks.map(v=>`<div class="ch-grid" style="bottom:${v/max*100}%"><span class="ch-y">${fmtN(v)}</span></div>`).join("")}
       <div class="ch-cols">${cats.map((c,ci)=>{const t=tot(c),segs=used.filter(s=>c[s.key]>0);
         const pres=(c.A||0)+(c.R||0);
-        const tip=`<b>${esc(c.label)}</b>${used.map(s=>`<div><i style="background:${s.color}"></i>${s.label}: <b>${fmtN(c[s.key]||0)}</b></div>`).join("")}<div class="ch-tip-f">${pct(pres,t)}% asistencia · ${fmtN(t)} registros</div>`;
+        const tip=`<b>${esc(c.label)}</b>${used.map(s=>`<div><i style="background:${s.color}"></i>${s.label}: <b>${fmtN(c[s.key]||0)}</b></div>`).join("")}<div class="ch-tip-f">${series===SERIES?pct(pres,t)+"% asistencia · ":""}${fmtN(t)} ${sufijo}</div>`;
         return `<div class="ch-col" tabindex="0" data-tip="${esc(tip)}">${pocos&&t?`<span class="ch-tot">${fmtN(t)}</span>`:""}
           <div class="ch-stack">${segs.map((s,i)=>`<i class="${i===segs.length-1?"top":""}" style="height:${c[s.key]/max*alto}px;background:${s.color}"></i>`).join("")}</div></div>`}).join("")}</div>
     </div>
@@ -274,5 +274,5 @@ function bind(root,rep,p){
     root.querySelector("#r-csv").onclick=()=>downloadCsv(name+".csv",aoa());
   }
 }
-window.CPR={render,invalidate(){CACHE.at=0}};
+window.CPR={render,barChart,invalidate(){CACHE.at=0}};
 })();
