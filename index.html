@@ -297,6 +297,7 @@ tr.click{cursor:pointer} tr.click:hover td{background:var(--surface2)}
     <div id="cov-kpis" class="kpis"></div>
     <div class="toolbar">
       <span class="muted">Ver por</span>
+      <div class="seg" id="cov-scope" hidden><button data-v="mi" aria-pressed="true">Mi personal</button><button data-v="todos" aria-pressed="false">Todos</button></div>
       <div class="seg" id="cov-dim"><button data-v="posicion" aria-pressed="true">Posición</button><button data-v="area" aria-pressed="false">Área</button></div>
       <select id="cov-turno" aria-label="Turno"></select>
       <select id="cov-sitio" aria-label="Sitio"></select>
@@ -309,6 +310,7 @@ tr.click{cursor:pointer} tr.click:hover td{background:var(--surface2)}
   </section>
 
   <section class="view" id="v-lista" hidden>
+    <div id="l-back" hidden></div>
     <div class="toolbar">
       <select id="l-turno" aria-label="Turno"></select>
       <select id="l-pos" aria-label="Posición"></select>
@@ -346,6 +348,7 @@ tr.click{cursor:pointer} tr.click:hover td{background:var(--surface2)}
     </div>
   </section>
   <section class="view" id="v-reportes" hidden><div id="rep-root" style="display:flex;flex-direction:column;gap:16px"></div></section>
+  <section class="view" id="v-vacaciones" hidden><div id="vac-root" style="display:flex;flex-direction:column;gap:16px"></div></section>
   <section class="view" id="v-movimientos" hidden><div id="mov-root" style="display:flex;flex-direction:column;gap:16px"></div></section>
   <section class="view" id="v-usuarios" hidden><div id="usr-root" style="display:flex;flex-direction:column;gap:16px"></div></section>
 </main>

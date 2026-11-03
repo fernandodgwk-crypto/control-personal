@@ -13,7 +13,11 @@ App web para pase de lista por turno, cobertura por área y posición (áreas de
   - *Pase:* el supervisor actual pasa a una persona a otro supervisor; aprueba quien la recibe.
   - *Solicitud:* un supervisor pide a una persona de otro equipo; aprueba el supervisor actual.
   - Al aprobar, la persona cambia de supervisor y toma el gerente del nuevo. Quien lo pidió puede cancelarlo mientras está pendiente. Todo queda en el historial y en *Reportes → Cambios de supervisor*.
-  - El supervisor de una persona ya no se cambia desde la ficha: solo por un movimiento aprobado o por quien tenga el permiso *gestionar movimientos* (lo valida la base, `supabase/movimientos.sql`).
+  - El supervisor de una persona ya no se cambia desde la ficha: solo por un movimiento aprobado o por quien tenga el permiso *gestionar movimientos* (gerencia) (lo valida la base, `supabase/movimientos.sql`).
+- **Vacaciones y descansos:** asignar vacaciones y registrar *descanso laborado* (la persona trabaja su día de descanso) con su descanso compensatorio. **Control RBA:** lista a quien lleva 5 o más días seguidos trabajando (máximo 6 sin descanso). En el pase de lista se ven las vacaciones y descansos programados, y "Marcar pendientes" pone V a quien tiene vacaciones.
+- **Avisos** (campana en la barra): al administrador, al gerente y al supervisor a cargo cuando se asignan vacaciones, se registra un descanso laborado o alguien llega a 6 días seguidos trabajando (lo genera la base, `supabase/vacaciones_rba_back.sql`).
+- **Back:** cada supervisor asigna en Pase de lista el correo de su suplente; ese back puede pasar lista a su equipo y programar sus vacaciones (lo valida la base).
+- **Cobertura:** por defecto muestra *Mi personal* (equipos de los que eres supervisor o back); con *Todos* ves el área completa.
 - **Catálogos:** perfiles, certificaciones, **supervisores** (cada uno ligado por correo a su cuenta, que es la que aprueba), áreas, sitios, gerentes y turnos.
 - **Usuarios** (solo admin): rol de cada cuenta y **Permisos por rol** (pestañas que ve y acciones que puede hacer).
 

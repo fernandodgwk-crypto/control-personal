@@ -9,10 +9,10 @@ const pad=n=>String(n).padStart(2,"0");
 const ymd=d=>d.getFullYear()+"-"+pad(d.getMonth()+1)+"-"+pad(d.getDate());
 const addDays=(s,n)=>{const d=new Date(s+"T12:00:00");d.setDate(d.getDate()+n);return ymd(d)};
 const fmtD=s=>{if(!s)return"";const [y,m,d]=String(s).slice(0,10).split("-");return d+"/"+m+"/"+y};
-const VIEWS=["cobertura","lista","personal","movimientos","reportes","catalogos","usuarios"];
+const VIEWS=["cobertura","lista","personal","movimientos","vacaciones","reportes","catalogos","usuarios"];
 const sitioCorto=x=>String(x||"").replace(/^MX Guadalajara North\s*/i,"")||String(x||"");
 
-const S={sb:null,session:null,rol:"lector",perms:new Set(),sups:[],movs:[],movsLoaded:false,isAdmin:false,canMark:false,canPersonal:false,canCatalog:false,canReq:false,roles:[],emps:new Map(),cfg:null,att:{},date:ymd(new Date()),
+const S={sb:null,session:null,rol:"lector",perms:new Set(),sups:[],movs:[],movsLoaded:false,prog:[],progLoaded:false,recent:{},avisos:[],covScope:null,isAdmin:false,canMark:false,canPersonal:false,canCatalog:false,canReq:false,roles:[],emps:new Map(),cfg:null,att:{},date:ymd(new Date()),
   tab:"cobertura",dim:"posicion",editReq:false,sel:null,loaded:false,channel:null,users:[],cat:"perfiles"};
 try{const d=localStorage.getItem("cp_dim");if(d)S.dim=d;const c=localStorage.getItem("cp_cat");if(c)S.cat=c;}catch(e){}
 
@@ -27,21 +27,22 @@ const TABS={
   lista:{label:"Pase de lista",sub:"Marca la asistencia de cada persona del turno.",icon:'<path d="M9 6h12M9 12h12M9 18h12"/><path d="M3.5 6l1.2 1.2L7 5M3.5 12l1.2 1.2L7 11M3.5 18l1.2 1.2L7 17"/>'},
   personal:{label:"Personal",sub:"Fichas con celular, sitio, a quién reporta y certificaciones.",icon:'<circle cx="9" cy="8" r="3.5"/><path d="M2.5 20c.8-3.5 3.4-5.5 6.5-5.5s5.7 2 6.5 5.5"/><path d="M16 4.5a3.5 3.5 0 010 7M18 14.8c1.9.8 3.1 2.6 3.5 5.2"/>'},
   movimientos:{label:"Movimientos",sub:"Cambios de supervisor: pases y solicitudes de personal con aprobación.",icon:'<path d="M4 8h13l-3-3M20 16H7l3 3"/>'},
+  vacaciones:{label:"Vacaciones y descansos",sub:"Vacaciones, descansos laborados con su descanso compensatorio y control RBA (máximo 6 días seguidos sin descanso).",icon:'<rect x="3" y="4" width="18" height="17" rx="2"/><path d="M3 9h18M8 2v4M16 2v4M8 14h3M8 17h6"/>'},
   reportes:{label:"Reportes",sub:"Asistencia, ausentismo y cobertura por periodo, con gráficas y descarga a Excel o CSV.",icon:'<path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/>'},
   catalogos:{label:"Catálogos",sub:"Perfiles, certificaciones, supervisores, áreas, sitios, gerentes y turnos.",icon:'<path d="M4 4h6v6H4zM4 14h6v6H4z"/><path d="M14 6h7M14 9h5M14 16h7M14 19h5"/>'},
   usuarios:{label:"Usuarios",sub:"Quién entra a la app y qué puede hacer cada rol.",icon:'<rect x="4" y="3" width="16" height="18" rx="2"/><circle cx="12" cy="10" r="3"/><path d="M8 17c1-2 2.5-3 4-3s3 1 4 3"/>'}
 };
-const TAB_ORDER=["cobertura","lista","personal","movimientos","reportes","catalogos"];
+const TAB_ORDER=["cobertura","lista","personal","movimientos","vacaciones","reportes","catalogos"];
 const PRIVS=[
   ...TAB_ORDER.map(t=>({k:"tab:"+t,g:"Pestañas que ve",l:TABS[t].label})),
   {k:"pasar_lista",g:"Acciones",l:"Pasar lista (asistencia, retardos, faltas, permisos, vacaciones, incapacidades)",tab:"lista"},
   {k:"editar_personal",g:"Acciones",l:"Editar personal (altas, bajas, fichas, celular, certificaciones)",tab:"personal"},
   {k:"editar_requeridos",g:"Acciones",l:"Editar requeridos de la cobertura",tab:"cobertura"},
   {k:"editar_catalogos",g:"Acciones",l:"Editar catálogos (perfiles, supervisores, áreas, sitios, gerentes, turnos, certificaciones)",tab:"catalogos"},
-  {k:"gestionar_movimientos",g:"Acciones",l:"Pedir y aprobar cambios de supervisor de cualquier equipo (gerencia o RH)",tab:"movimientos"}
+  {k:"gestionar_movimientos",g:"Acciones",l:"Pedir y aprobar cambios de supervisor y programar vacaciones de cualquier equipo (gerencia)",tab:"movimientos"}
 ];
 const ROLE_DEFAULTS={
-  supervisor:["tab:cobertura","tab:lista","tab:personal","tab:movimientos","tab:reportes","pasar_lista"],
+  supervisor:["tab:cobertura","tab:lista","tab:personal","tab:movimientos","tab:vacaciones","tab:reportes","pasar_lista"],
   lector:["tab:cobertura","tab:personal","tab:reportes"],
   sin_acceso:[]
 };
@@ -98,6 +99,10 @@ function refreshSelects(){
   fillSelect($("#l-area"),cfg().areas,"Todas las áreas",areaLbl);fillSelect($("#p-area"),cfg().areas,"Todas las áreas",areaLbl);
 }
 function supsUsed(){const c=S.sups.filter(x=>x.activo!==false).map(x=>x.nombre);active().forEach(e=>{if(e.supervisor&&!c.includes(e.supervisor))c.push(e.supervisor)});return c.sort((a,b)=>a.localeCompare(b))}
+const backupOf=()=>S.sups.filter(x=>x.activo!==false&&x.backup_email&&x.backup_email.toLowerCase()===myEmail()).map(x=>x.nombre);
+const myTeams=()=>[...new Set([...mySups(),...backupOf()])];
+const canMarkFor=e=>S.canMark||backupOf().includes(e.supervisor);
+const canProgram=()=>verTodos()||myTeams().length>0;
 const isSupName=n=>S.sups.some(x=>x.nombre===n&&x.activo!==false);
 const isGerName=n=>(cfg().gerentes||[]).includes(n);
 const verTodos=()=>S.isAdmin||S.perms.has("gestionar_movimientos");
@@ -105,7 +110,8 @@ const areaLbl=a=>{const s=(cfg().areaSitio||{})[a];return s?`${a} · ${sitioCort
 const myEmail=()=>((S.session&&S.session.user.email)||"").toLowerCase();
 const mySups=()=>S.sups.filter(x=>x.activo!==false&&x.email&&x.email.toLowerCase()===myEmail()).map(x=>x.nombre);
 function listUsed(k,f){const c=(cfg()[k]||[]).slice();active().forEach(e=>{if(e[f]&&!c.includes(e[f]))c.push(e[f])});return c}
-const covBase=()=>{const st=$("#cov-sitio").value;return active().filter(e=>!st||e.sitio===st)};
+const covMine=()=>{if(S.covScope===null)S.covScope=myTeams().length?"mi":"todos";return S.covScope==="mi"};
+const covBase=()=>{const st=$("#cov-sitio").value,mi=covMine(),t=myTeams();return active().filter(e=>(!st||e.sitio===st)&&(!mi||t.includes(e.supervisor)))};
 
 /* ---------- coverage ---------- */
 function coverage(){
@@ -159,7 +165,7 @@ function renderCobertura(){
     bad.sort((a,b)=>b.falta-a.falta).forEach(c=>{
       h+=`<div class="alert"><h3>${esc(c.k)} <span class="chip bad">faltan ${c.falta}</span> <span class="muted" style="font-size:14px;font-family:var(--f-body)">${esc(c.t)} · ${c.pres.length}/${c.req}</span></h3>`;
       const out=c.aus.concat(c.pend);
-      if(out.length){h+=`<ul>`+out.map(e=>{const s=markOf(e);return `<li><span>${esc(e.nombre)} <span class="chip ${s?"bad":"warn"}">${s?ST[s]:"Sin registrar"}</span></span><span class="tel">${esc(e.celular||"sin celular")}</span></li>`}).join("")+`</ul>`}
+      if(out.length){h+=`<ul>`+out.map(e=>{const s=markOf(e);return `<li><span>${esc(e.nombre)} <span class="chip ${s?"bad":"warn"}">${s?ST[s]:"Sin registrar"}</span></span><span class="small muted">${esc(e.posicion||"")}</span></li>`}).join("")+`</ul>`}
       else h+=`<span class="muted" style="font-size:13px">No hay personas asignadas suficientes para el requerido.</span>`;
       h+=`</div>`;
     });
@@ -171,7 +177,11 @@ function renderCobertura(){
   } else if(active().length){
     h=`<div class="banner info">${pend?`Ninguna ${S.dim==="area"?"área":"posición"} descubierta todavía. Quedan ${pend} personas sin registrar.`:`Todas las ${noun.toLowerCase()} están cubiertas.`}</div>`;
   }
+  const rb=rbaList(covBase()).filter(x=>x.n>=6);
+  if(rb.length)h=`<div class="banner" style="display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap"><span><b>RBA:</b> ${rb.length} persona${rb.length>1?"s":""} con 6 días seguidos o más trabajando (${rb.slice(0,4).map(x=>esc(x.e.nombre)).join(", ")}${rb.length>4?"…":""}).</span><a href="#vacaciones" style="color:inherit;font-weight:600">Ver en Vacaciones y descansos</a></div>`+h;
   $("#cov-alerts").innerHTML=h;
+  document.querySelectorAll("#cov-scope button").forEach(b=>b.setAttribute("aria-pressed",String((b.dataset.v==="mi")===covMine())));
+  $("#cov-scope").hidden=!myTeams().length;
 
   if(!active().length){$("#cov-matrix").innerHTML=`<div class="empty">${S.loaded?"Aún no hay personal. Agrégalo en la pestaña Personal.":"Cargando personal…"}</div>`;$("#cov-detail").innerHTML="";return}
   let m=`<table class="matrix"><thead><tr><th>${S.dim==="area"?"Área":"Posición"}</th>${TT.map(t=>`<th>${esc(t)}</th>`).join("")}</tr></thead><tbody>`;
@@ -201,9 +211,9 @@ function renderCellDetail(){
   const {cells}=coverage();const c=cells[S.sel];if(!c){el.innerHTML="";return}
   const ppl=c.plant.slice().sort((a,b)=>a.nombre.localeCompare(b.nombre));
   el.innerHTML=`<div class="panel"><h2>${c.k?esc(c.k):"Sin asignar"} · ${esc(c.t)} <span class="sub">${c.pres.length} presentes de ${c.req} requeridos</span></h2>
-  <div class="scroll"><table><thead><tr><th>Nombre</th><th>${S.dim==="area"?"Posición":"Área"}</th><th>Estado</th><th>Celular</th><th>Certificaciones</th></tr></thead><tbody>${
+  <div class="scroll"><table><thead><tr><th>Nombre</th><th>${S.dim==="area"?"Posición":"Área"}</th><th>Estado</th><th>Supervisor</th><th>Certificaciones</th></tr></thead><tbody>${
     ppl.map(e=>{const s=markOf(e);const miss=missingCerts(e,S.date);return `<tr class="click" data-emp="${esc(e.num)}"><td>${esc(e.nombre)}<div class="mono muted">${esc(e.num)}</div></td><td>${esc((S.dim==="area"?e.posicion:e.area)||"—")}</td>
-      <td>${s?`<span class="chip ${PRESENT.has(s)?"ok":"bad"}">${ST[s]}</span>`:`<span class="chip warn">Sin registrar</span>`}</td><td class="tel">${esc(e.celular||"—")}</td>
+      <td>${s?`<span class="chip ${PRESENT.has(s)?"ok":"bad"}">${ST[s]}</span>`:`<span class="chip warn">Sin registrar</span>`}</td><td class="small">${esc(e.supervisor||"—")}</td>
       <td>${(e.certs||[]).length?(e.certs||[]).map(x=>`<span class="chip ${certValid(x,S.date)?"ok":"bad"}">${esc(x.nombre)}</span>`).join(" "):'<span class="muted">—</span>'}${miss.length?` <span class="chip warn">falta ${esc(miss.join(", "))}</span>`:""}</td></tr>`}).join("")||`<tr><td colspan="5" class="muted">Nadie asignado aquí.</td></tr>`
   }</tbody></table></div></div>`;
 }
@@ -211,27 +221,30 @@ function renderCellDetail(){
 /* ---------- roll call ---------- */
 function rollPeople(){
   const t=$("#l-turno").value,p=$("#l-pos").value,a=$("#l-area").value,st=$("#l-sitio").value,sp=$("#l-sup").value,q=$("#l-q").value.trim().toLowerCase();
-  const my=mySups(),todos=verTodos();
+  const my=myTeams(),todos=verTodos();
   return active().filter(e=>(todos||my.includes(e.supervisor))&&e.turno===t&&(!p||e.posicion===p)&&(!a||e.area===a)&&(!st||e.sitio===st)&&(!sp||e.supervisor===sp)&&(!q||e.nombre.toLowerCase().includes(q)||String(e.num).includes(q)))
     .sort((x,y)=>(x.posicion||"").localeCompare(y.posicion||"")||x.nombre.localeCompare(y.nombre));
 }
 function renderLista(){
-  if(S.session&&!verTodos()&&!mySups().length){$("#l-sum").innerHTML="";$("#l-all").disabled=true;
+  renderBackupBox();
+  if(S.session&&!verTodos()&&!myTeams().length){$("#l-sum").innerHTML="";$("#l-all").disabled=true;
     $("#l-list").innerHTML=`<div class="empty">Tu cuenta no está ligada a ningún supervisor, así que no tienes personal en tu pase de lista.<br>Pide al administrador que ponga tu correo en Catálogos → Supervisores.</div>`;return}
   const ppl=rollPeople();const cnt={};let pend=0;
   ppl.forEach(e=>{const s=markOf(e);if(s)cnt[s]=(cnt[s]||0)+1;else pend++});
   $("#l-sum").innerHTML=`<span class="chip">${ppl.length} personas</span>`+Object.keys(ST).filter(k=>cnt[k]).map(k=>`<span class="chip ${PRESENT.has(k)?"ok":"bad"}">${ST[k]}: ${cnt[k]}</span>`).join("")+(pend?`<span class="chip warn">Sin registrar: ${pend}</span>`:`<span class="chip ok">Lista completa</span>`);
-  $("#l-all").disabled=!pend||!S.canMark;
+  $("#l-all").disabled=!pend||!ppl.some(canMarkFor);
   if(!ppl.length){$("#l-list").innerHTML=`<div class="empty">${S.loaded?"No hay personas con estos filtros.":"Cargando personal…"}</div>`;return}
   $("#l-list").innerHTML=ppl.map(e=>{const s=markOf(e);
-    return `<div class="rrow"><div class="who"><b>${esc(e.nombre)}</b><span><span class="mono">${esc(e.num)}</span> · ${esc(e.posicion||"sin posición")}${e.area?" · "+esc(e.area):""}${e.celular?` · <span class="tel">${esc(e.celular)}</span>`:""}</span></div>
-    <div class="marks">${Object.keys(ST).map(k=>`<button class="mk s-${k} ${s===k?"on":""}" data-mark="${k}" data-emp="${esc(e.num)}" title="${ST[k]}" aria-label="${ST[k]}: ${esc(e.nombre)}" aria-pressed="${s===k}" ${S.canMark?"":"disabled"}>${k}</button>`).join("")}</div></div>`}).join("");
+    const pg=progOn(e.num,S.date),stk=streakBefore(e.num,S.date);
+    return `<div class="rrow"><div class="who"><b>${esc(e.nombre)}</b><span><span class="mono">${esc(e.num)}</span> · ${esc(e.posicion||"sin posición")}${e.area?" · "+esc(e.area):""}${e.celular?` · <span class="tel">${esc(e.celular)}</span>`:""}</span>
+      ${pg.vac?'<span class="chip info" style="margin-top:4px">Vacaciones programadas</span> ':""}${pg.comp?'<span class="chip acc" style="margin-top:4px">Descanso compensatorio</span> ':""}${pg.dl?'<span class="chip warn" style="margin-top:4px">Trabaja su descanso</span> ':""}${stk>=6&&!s?`<span class="chip bad" style="margin-top:4px">RBA: ${stk} días seguidos, debe descansar</span>`:""}</div>
+    <div class="marks">${Object.keys(ST).map(k=>`<button class="mk s-${k} ${s===k?"on":""}" data-mark="${k}" data-emp="${esc(e.num)}" title="${ST[k]}" aria-label="${ST[k]}: ${esc(e.nombre)}" aria-pressed="${s===k}" ${canMarkFor(e)?"":"disabled"}>${k}</button>`).join("")}</div></div>`}).join("");
 }
 async function mark(num,s){
   const e=S.emps.get(num);if(!e)return;
   const cur=markOf(e);const fecha=S.date;
   const prev=S.att[num];
-  if(cur===s){delete S.att[num]}else S.att[num]=s;
+  if(cur===s){delete S.att[num];addRecent(num,fecha,null)}else{S.att[num]=s;addRecent(num,fecha,s)}
   renderActive();
   const q=cur===s
     ?S.sb.from("asistencia").delete().match({fecha,num})
@@ -240,10 +253,11 @@ async function mark(num,s){
   if(error){if(prev)S.att[num]=prev;else delete S.att[num];renderActive();toast(errMsg(error))}
 }
 async function markAll(){
-  const ppl=rollPeople().filter(e=>!markOf(e));if(!ppl.length)return;
-  const fecha=S.date,now=new Date().toISOString(),uid=S.session.user.id;
-  ppl.forEach(e=>S.att[e.num]="A");renderActive();
-  const {error}=await S.sb.from("asistencia").upsert(ppl.map(e=>({fecha,num:e.num,estado:"A",turno:e.turno,marcado_por:uid,marcado_en:now})));
+  const fecha=S.date;
+  const ppl=rollPeople().filter(e=>!markOf(e)&&canMarkFor(e)&&!progOn(e.num,fecha).comp);if(!ppl.length)return;
+  const now=new Date().toISOString(),uid=S.session.user.id,est=e=>progOn(e.num,fecha).vac?"V":"A";
+  ppl.forEach(e=>{S.att[e.num]=est(e);addRecent(e.num,fecha,est(e))});renderActive();
+  const {error}=await S.sb.from("asistencia").upsert(ppl.map(e=>({fecha,num:e.num,estado:est(e),turno:e.turno,marcado_por:uid,marcado_en:now})));
   if(error){ppl.forEach(e=>delete S.att[e.num]);renderActive();toast(errMsg(error))}else toast(`${ppl.length} marcados como asistencia`);
 }
 
@@ -581,6 +595,115 @@ $("#v-movimientos").addEventListener("click",async e=>{
     const {error}=await S.sb.rpc("cancelar_movimiento",{p_id:c.dataset.movcan});if(error){toast(error.message);return}toast("Solicitud cancelada");loadMovs()}
 });
 
+/* ---------- Vacaciones, descanso laborado y RBA ---------- */
+function addRecent(num,f,s){const m=S.recent[num]||(S.recent[num]={});if(s)m[f]=s;else delete m[f]}
+function streakBefore(num,f){let n=0,d=addDays(f,-1);const m=S.recent[num]||{};while(n<31&&(m[d]==="A"||m[d]==="R")){n++;d=addDays(d,-1)}return n}
+function streakAt(num,f){const m=S.recent[num]||{};return (m[f]==="A"||m[f]==="R")?streakBefore(num,f)+1:0}
+function progOn(num,f){const o={vac:false,comp:false,dl:false};S.prog.forEach(p=>{if(p.num!==num||p.estado!=="activo")return;
+  if(p.tipo==="vacaciones"&&p.desde<=f&&p.hasta>=f)o.vac=true;if(p.tipo==="descanso_laborado"){if(p.desde===f)o.dl=true;if(p.compensa===f)o.comp=true}});return o}
+function rbaList(ppl){const hoy=ymd(new Date());return ppl.map(e=>{const m=S.recent[e.num]||{};const worked=m[hoy]==="A"||m[hoy]==="R";const n=worked?streakAt(e.num,hoy):streakBefore(e.num,hoy);return{e,n,worked}}).filter(x=>x.n>=5).sort((a,b)=>b.n-a.n)}
+function scopePeople(){const t=myTeams();return active().filter(e=>verTodos()||t.includes(e.supervisor))}
+async function loadRecent(){
+  const desde=addDays(ymd(new Date()),-40),out=[];
+  for(let from=0;;from+=1000){const {data,error}=await S.sb.from("asistencia").select("num,fecha,estado").gte("fecha",desde).order("fecha").range(from,from+999);if(error||!data)break;out.push(...data);if(data.length<1000)break}
+  S.recent={};out.forEach(r=>addRecent(r.num,r.fecha,r.estado));
+}
+async function loadProg(){const {data,error}=await S.sb.from("programacion").select("*").gte("hasta",addDays(ymd(new Date()),-90)).order("desde");S.prog=error?[]:(data||[]);S.progLoaded=true;renderActive()}
+async function loadAvisos(){const {data,error}=await S.sb.from("avisos").select("*").order("creado",{ascending:false}).limit(150);S.avisos=error?[]:(data||[]);renderNav()}
+const fmtF=f=>f?fmtD(f):"";
+function renderVacaciones(){
+  const root=$("#vac-root");
+  if(!S.progLoaded){root.innerHTML='<div class="panel empty">Cargando…</div>';return}
+  const hoy=ymd(new Date()),scope=scopePeople(),nums=new Set(scope.map(e=>e.num));
+  const rb=rbaList(scope);
+  const act=S.prog.filter(p=>p.estado==="activo"&&nums.has(p.num));
+  const prox=act.filter(p=>p.hasta>=hoy||(p.compensa&&p.compensa>=hoy)).sort((a,b)=>a.desde.localeCompare(b.desde));
+  const pas=S.prog.filter(p=>nums.has(p.num)&&!prox.includes(p)).sort((a,b)=>b.desde.localeCompare(a.desde)).slice(0,60);
+  const row=(p,cancel)=>{const e=S.emps.get(p.num)||{nombre:p.num};const vac=p.tipo==="vacaciones";const dias=vac?Math.round((new Date(p.hasta)-new Date(p.desde))/864e5)+1:0;
+    return `<tr><td>${esc(e.nombre)}<div class="small muted">${esc(e.supervisor||"")} · ${esc(e.turno||"")}</div></td>
+      <td><span class="chip ${vac?"info":"warn"}">${vac?"Vacaciones":"Descanso laborado"}</span></td>
+      <td class="nw">${vac?`${fmtF(p.desde)}${p.hasta>p.desde?" al "+fmtF(p.hasta):""} <span class="muted small">(${dias} día${dias>1?"s":""})</span>`:`Trabaja ${fmtF(p.desde)}`}</td>
+      <td class="nw">${vac?"—":p.compensa?`Descansa ${fmtF(p.compensa)}`:'<span class="chip bad">Sin descanso compensatorio</span>'}</td>
+      <td class="small">${esc(p.nota||"")}<div class="muted">${esc(p.creado_email||"")}</div></td>
+      <td>${p.estado==="cancelado"?'<span class="chip">Cancelado</span>':cancel?`<button class="btn danger" data-pcan="${p.id}">Cancelar</button>`:""}</td></tr>`};
+  const tabla=(list,cancel,vacio)=>`<div class="scroll"><table><thead><tr><th>Persona</th><th>Tipo</th><th>Fechas</th><th>Descanso compensatorio</th><th>Nota</th><th></th></tr></thead><tbody>${list.length?list.map(p=>row(p,cancel)).join(""):`<tr><td colspan="6" class="empty">${vacio}</td></tr>`}</tbody></table></div>`;
+  root.innerHTML=`
+  <div class="rep-top"><div class="small muted">${verTodos()?"Ves a todo el personal.":myTeams().length?`Tu personal: <b>${myTeams().map(esc).join(", ")}</b>`:"Tu cuenta no está ligada a ningún supervisor."} Los avisos llegan al administrador, al gerente y al supervisor a cargo.</div>
+    ${canProgram()?`<div class="row"><button class="btn primary" data-pnew="vacaciones">Asignar vacaciones</button><button class="btn" data-pnew="descanso_laborado">Registrar descanso laborado</button></div>`:""}</div>
+  <div class="panel" style="padding:0"><div class="ph"><h3>Control RBA</h3><span class="small muted">Días seguidos trabajando al día de hoy (asistencia o retardo). Máximo 6 sin descanso.</span></div><div class="scroll"><table><thead><tr><th>Persona</th><th>Supervisor</th><th class="num">Días seguidos</th><th>Estado</th><th></th></tr></thead><tbody>${
+    rb.length?rb.map(x=>`<tr><td>${esc(x.e.nombre)}<div class="small muted">${esc(x.e.posicion||"")} · ${esc(x.e.turno||"")}</div></td><td class="small">${esc(x.e.supervisor||"")}</td><td class="num" style="font-weight:600;${x.n>=6?"color:var(--bad)":""}">${x.n}</td>
+      <td>${x.n>=7?'<span class="chip bad">Incumple RBA</span>':x.n===6?`<span class="chip bad">Debe descansar ${x.worked?"mañana":"hoy"}</span>`:'<span class="chip warn">Atención: 5 días</span>'}</td>
+      <td>${canProgram()?`<button class="btn" data-pnew="descanso_laborado" data-pnum="${esc(x.e.num)}">Programar descanso</button>`:""}</td></tr>`).join("")
+    :`<tr><td colspan="5" class="empty">Nadie lleva 5 días seguidos o más trabajando.</td></tr>`}</tbody></table></div></div>
+  <div class="panel" style="padding:0"><div class="ph"><h3>Programado</h3><span class="chip">${prox.length}</span></div>${tabla(prox,true,"No hay vacaciones ni descansos programados.")}</div>
+  <div class="panel" style="padding:0"><div class="ph"><h3>Anteriores y cancelados</h3><span class="small muted">Últimos 90 días</span></div>${tabla(pas,false,"Sin registros anteriores.")}</div>`;
+}
+function openProgModal(tipo,num){
+  const ppl=scopePeople().sort((a,b)=>a.nombre.localeCompare(b.nombre)),hoy=ymd(new Date()),vac=tipo==="vacaciones";
+  const root=$("#modal-root");
+  root.innerHTML=`<div class="modal-scrim"><div class="panel modal" role="dialog" aria-modal="true" aria-labelledby="pg-t" style="width:min(520px,100%)">
+    <div class="ph"><h3 id="pg-t">${vac?"Asignar vacaciones":"Registrar descanso laborado"}</h3><button class="btn" id="pg-x">Cancelar</button></div>
+    <form class="pb" id="f-pg" style="display:grid;gap:12px">
+      <p class="small muted" style="margin:0">${vac?"Los días quedan marcados en el pase de lista y se avisa al administrador, al gerente y al supervisor a cargo.":"La persona trabaja su día de descanso. Asigna su descanso compensatorio para no pasar de 6 días seguidos (RBA)."}</p>
+      <div class="field"><label for="pg-num">Persona</label><select id="pg-num" required>${ppl.map(e=>`<option value="${esc(e.num)}" ${e.num===num?"selected":""}>${esc(e.nombre)} · ${esc(e.supervisor||"")}</option>`).join("")}</select></div>
+      ${vac?`<div class="grid2"><div class="field"><label for="pg-d">Desde</label><input type="date" id="pg-d" value="${hoy}" required></div><div class="field"><label for="pg-h">Hasta</label><input type="date" id="pg-h" value="${hoy}" required></div></div>`
+        :`<div class="grid2"><div class="field"><label for="pg-d">Día de descanso que trabaja</label><input type="date" id="pg-d" value="${hoy}" required></div><div class="field"><label for="pg-c">Descanso compensatorio</label><input type="date" id="pg-c"></div></div>`}
+      <div id="pg-info" class="small"></div>
+      <div class="field"><label for="pg-n">Nota</label><textarea id="pg-n" placeholder="${vac?"Ej. vacaciones de fin de año":"Ej. inventario, arranque de línea"}"></textarea></div>
+      <div id="pg-err" style="color:var(--bad);font-size:13px;min-height:1.2em"></div>
+      <div class="row" style="justify-content:flex-end"><button class="btn primary" id="pg-ok">Guardar</button></div></form></div></div>`;
+  const info=()=>{const n=$("#pg-num").value,d=$("#pg-d").value,el=$("#pg-info");if(!n||!d){el.innerHTML="";return}
+    if(vac){const h=$("#pg-h").value;const dias=h&&h>=d?Math.round((new Date(h)-new Date(d))/864e5)+1:0;el.innerHTML=dias?`<span class="chip info">${dias} día${dias>1?"s":""} de vacaciones</span>`:'<span style="color:var(--bad)">La fecha final debe ser igual o posterior a la inicial.</span>';return}
+    const prev=streakBefore(n,d),tot=prev+1,c=$("#pg-c").value;
+    let h=`Con este día lleva <b>${tot}</b> día${tot>1?"s":""} seguido${tot>1?"s":""} trabajando (según el pase de lista). `;
+    if(tot>=7)h+='<span class="chip bad">Excede el máximo RBA de 6 días</span> ';
+    else if(tot===6)h+='<span class="chip warn">Llega al máximo RBA: debe descansar el día siguiente</span> ';
+    if(!c)h+='<span class="chip bad">Sin descanso compensatorio</span>';
+    else{const gap=Math.round((new Date(c)-new Date(d))/864e5);h+=gap<1?'<span style="color:var(--bad)">El descanso debe ser después del día trabajado.</span>':gap>6?'<span class="chip warn">El descanso queda a más de 6 días: riesgo RBA</span>':'<span class="chip ok">Descanso dentro de los 6 días</span>'}
+    el.innerHTML=h};
+  ["pg-num","pg-d","pg-h","pg-c"].forEach(id=>{const x=$("#"+id);if(x)x.addEventListener("change",info)});info();
+  $("#pg-x").onclick=()=>root.innerHTML="";
+  $("#f-pg").onsubmit=async ev=>{ev.preventDefault();const b=$("#pg-ok");b.disabled=true;
+    const d=$("#pg-d").value,args={p_num:$("#pg-num").value,p_tipo:tipo,p_desde:d,p_hasta:vac?$("#pg-h").value:d,p_compensa:vac?null:($("#pg-c").value||null),p_nota:$("#pg-n").value.trim()};
+    const {error}=await S.sb.rpc("programar_ausencia",args);
+    if(error){$("#pg-err").textContent=error.message;b.disabled=false;return}
+    root.innerHTML="";toast(vac?"Vacaciones asignadas · se envió aviso":"Descanso laborado registrado · se envió aviso");loadProg();loadAvisos();
+    if(S.tab!=="vacaciones")location.hash="vacaciones"};
+}
+$("#v-vacaciones").addEventListener("click",async e=>{
+  const n=e.target.closest("[data-pnew]");if(n){openProgModal(n.dataset.pnew,n.dataset.pnum);return}
+  const c=e.target.closest("[data-pcan]");
+  if(c){if(c.dataset.confirm!=="1"){c.dataset.confirm="1";c.textContent="¿Seguro?";return}
+    const {error}=await S.sb.rpc("cancelar_programacion",{p_id:c.dataset.pcan});if(error){toast(error.message);return}toast("Cancelado");loadProg()}
+});
+/* back (suplente) del supervisor para pasar lista */
+function renderBackupBox(){
+  const el=$("#l-back");if(!el)return;const my=mySups(),bo=backupOf();
+  if(!my.length&&!bo.length){el.innerHTML="";el.hidden=true;return}
+  el.hidden=false;
+  el.innerHTML=`<div class="panel" style="padding:10px 14px;display:grid;gap:8px">${my.map(n=>{const x=S.sups.find(y=>y.nombre===n)||{};return `<div class="row"><span class="small"><b>Back de ${esc(n)}</b> · pasa lista cuando no estés:</span><input type="email" id="bk-${esc(n).replace(/\W/g,"")}" data-bkin="${esc(n)}" value="${esc(x.backup_email||"")}" placeholder="correo@flex.com" aria-label="Correo del back" style="min-width:220px"><button class="btn" data-bk="${esc(n)}">Guardar</button>${x.backup_email?`<button class="btn danger" data-bkdel="${esc(n)}">Quitar</button>`:""}</div>`}).join("")}
+    ${bo.length?`<div class="small"><span class="chip acc">Eres back de ${bo.map(esc).join(", ")}</span> Puedes pasar lista a su personal.</div>`:""}</div>`;
+}
+$("#v-lista").addEventListener("click",async e=>{
+  const b=e.target.closest("[data-bk],[data-bkdel]");if(!b)return;
+  const sup=b.dataset.bk||b.dataset.bkdel,inp=[...document.querySelectorAll("[data-bkin]")].find(x=>x.dataset.bkin===sup);
+  const email=b.dataset.bkdel?"":(inp?inp.value.trim().toLowerCase():"");
+  if(b.dataset.bk&&email&&!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)){toast("Escribe un correo válido");return}
+  const {error}=await S.sb.rpc("asignar_backup",{p_sup:sup,p_email:email});if(error){toast(error.message);return}
+  toast(email?"Back asignado: "+email:"Back quitado");await loadSups();renderLista();
+});
+/* avisos */
+function openAvisos(){
+  const root=$("#modal-root"),list=S.avisos;
+  root.innerHTML=`<div class="modal-scrim"><div class="panel modal" role="dialog" aria-modal="true" aria-labelledby="av-t" style="width:min(560px,100%)">
+    <div class="ph"><h3 id="av-t">Avisos</h3><div class="row">${list.some(a=>!a.leido)?'<button class="btn" id="av-all">Marcar todo como leído</button>':""}<button class="btn" id="av-x">Cerrar</button></div></div>
+    <div style="max-height:70vh;overflow:auto">${list.length?list.map(a=>`<div style="padding:12px 16px;border-bottom:1px solid var(--line);${a.leido?"opacity:.65":""}">
+      <div class="row" style="justify-content:space-between"><b style="font-weight:600">${a.leido?"":'<span style="color:var(--accent)">● </span>'}${esc(a.titulo)}</b><span class="chip ${a.tipo==="rba"?"bad":a.tipo==="vacaciones"?"info":"warn"}">${a.tipo==="rba"?"RBA":a.tipo==="vacaciones"?"Vacaciones":"Descanso laborado"}</span></div>
+      <div class="small" style="margin-top:4px">${esc(a.detalle)}</div><div class="small muted" style="margin-top:2px">${fmtTs(a.creado)}</div></div>`).join(""):'<div class="empty">No tienes avisos.</div>'}</div></div></div>`;
+  $("#av-x").onclick=()=>root.innerHTML="";
+  const all=$("#av-all");if(all)all.onclick=async()=>{const ids=S.avisos.filter(a=>!a.leido).map(a=>a.id);const {error}=await S.sb.from("avisos").update({leido:true}).in("id",ids);if(error){toast(errMsg(error));return}S.avisos.forEach(a=>a.leido=true);renderNav();openAvisos()};
+}
+
 /* ---------- Usuarios y permisos por rol (solo admin) ---------- */
 let PD=null; // borrador de permisos {rol:Set}
 function permDraft(){if(!PD)PD=Object.fromEntries(S.roles.filter(r=>r.nombre!=="admin").map(r=>[r.nombre,new Set(r.permisos||[])]));return PD}
@@ -605,7 +728,7 @@ function renderUsuarios(){
       `<td style="text-align:center"><input type="checkbox" data-perm="${esc(r.nombre)}|${p.k}" ${(d[r.nombre]||new Set()).has(p.k)?"checked":""} ${r.nombre==="sin_acceso"?"disabled":""} aria-label="${esc(p.l)}: ${esc(ROLE_LABEL(r.nombre))}"></td>`).join("")}</tr>`).join("")).join("")}
       <tr><td class="small muted">Acceso</td><td style="text-align:center" class="small">Todo</td>${others.map(r=>{const n=tabsOfRole(r.nombre,[...(d[r.nombre]||[])]).length;return `<td style="text-align:center" class="small">${n?`${n} pestaña${n>1?"s":""}`:'<span style="color:var(--bad);font-weight:600">Sin acceso</span>'}</td>`}).join("")}</tr>
     </tbody></table></div>
-    <div class="pb"><div class="row"><input type="text" id="role-new" placeholder="Nuevo rol (ej. rh, lider)" aria-label="Nuevo rol" style="flex:1 1 200px"><button class="btn" data-radd>Agregar rol</button></div>
+    <div class="pb"><div class="row"><input type="text" id="role-new" placeholder="Nuevo rol (ej. lider, planeador)" aria-label="Nuevo rol" style="flex:1 1 200px"><button class="btn" data-radd>Agregar rol</button></div>
     <p class="small muted" style="margin:10px 0 0">Dar una acción también da su pestaña; quitar una pestaña quita las acciones que dependen de ella. Un rol sin pestañas no puede entrar a la app.</p></div></div>`;
   root.innerHTML=usersHtml+permHtml;
 }
@@ -625,7 +748,7 @@ function renderActive(){
   if(!S.tabs||!S.tabs.length)return;
   if(S.tab==="cobertura")renderCobertura();else if(S.tab==="lista")renderLista();else if(S.tab==="personal")renderPersonal();
   else if(S.tab==="reportes"){if(window.CPR)window.CPR.render($("#rep-root"))}
-  else if(S.tab==="usuarios")renderUsuarios();else if(S.tab==="movimientos")renderMovimientos();else renderCatalogos();
+  else if(S.tab==="usuarios")renderUsuarios();else if(S.tab==="movimientos")renderMovimientos();else if(S.tab==="vacaciones")renderVacaciones();else renderCatalogos();
 }
 function setTab(t){
   if(t==="certificaciones"){S.cat="certificaciones";t="catalogos"}else if(t==="ajustes")t="catalogos";
@@ -649,7 +772,8 @@ function renderNav(){
   const pend=S.isAdmin?S.users.filter(u=>u.rol==="sin_acceso").length:0;
   $("#tabs").innerHTML=(S.tabs||[]).map(t=>`<button data-tab="${t}" aria-current="${S.tab===t?"page":"false"}" title="${esc(TABS[t].label)}" aria-label="${esc(TABS[t].label)}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${TABS[t].icon}</svg><span class="t">${esc(TABS[t].label)}</span>${t==="usuarios"&&pend?`<span class="tab-n" title="${pend} cuenta(s) sin acceso">${pend}</span>`:""}${t==="movimientos"&&pendingToApprove()?`<span class="tab-n" title="Por aprobar">${pendingToApprove()}</span>`:""}</button>`).join("");
   $("#who").innerHTML=`<span class="nm" title="${esc(S.session?S.session.user.email:"")}">${esc(S.session?S.session.user.email:"")}</span><span class="role">${esc(ROLE_LABEL(S.rol))}</span>
-    <div class="acts"><button id="chpass" title="Cambiar contraseña" aria-label="Cambiar contraseña"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="8" cy="15" r="4"/><path d="M11 12l9-9M17 6l3 3M15 8l2 2"/></svg><span class="t">Contraseña</span></button>
+    <div class="acts"><button id="avisos" title="Avisos" aria-label="Avisos${S.avisos.filter(a=>!a.leido).length?": "+S.avisos.filter(a=>!a.leido).length+" sin leer":""}" style="position:relative"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 8a6 6 0 0112 0c0 7 3 9 3 9H3s3-2 3-9M10.3 21a1.9 1.9 0 003.4 0"/></svg><span class="t">Avisos</span>${S.avisos.filter(a=>!a.leido).length?`<span class="tab-n" style="margin-left:4px">${S.avisos.filter(a=>!a.leido).length}</span>`:""}</button>
+    <button id="chpass" title="Cambiar contraseña" aria-label="Cambiar contraseña"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="8" cy="15" r="4"/><path d="M11 12l9-9M17 6l3 3M15 8l2 2"/></svg><span class="t">Contraseña</span></button>
     <button id="theme" title="Cambiar tema" aria-label="Cambiar a tema ${curTheme()==="dark"?"claro":"oscuro"}">${curTheme()==="dark"?'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg><span class="t">Claro</span>':'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 14.5A8 8 0 019.5 4 8 8 0 1020 14.5z"/></svg><span class="t">Oscuro</span>'}</button>
     <button id="logout" title="Salir" aria-label="Salir"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 4h4v16h-4M10 8l-4 4 4 4M6 12h10"/></svg><span class="t">Salir</span></button></div>`;
 }
@@ -657,6 +781,7 @@ document.addEventListener("click",e=>{
   const t=e.target.closest("#tabs [data-tab]");if(t){if(location.hash.slice(1)===t.dataset.tab)setTab(t.dataset.tab);else location.hash=t.dataset.tab;return}
   if(e.target.closest("#logout"))S.sb.auth.signOut();
   if(e.target.closest("#chpass"))openChangePassword();
+  if(e.target.closest("#avisos"))openAvisos();
   if(e.target.closest("#theme")){setTheme(curTheme()==="dark"?"light":"dark");renderNav()}
 });
 const curTheme=()=>document.documentElement.getAttribute("data-theme")==="dark"?"dark":"light";
@@ -693,6 +818,7 @@ $("#cov-dim").addEventListener("click",e=>{const b=e.target.closest("button");if
   [...$("#cov-dim").children].forEach(x=>x.setAttribute("aria-pressed",x===b));renderCobertura()});
 [...$("#cov-dim").children].forEach(x=>x.setAttribute("aria-pressed",x.dataset.v===S.dim));
 $("#cov-turno").addEventListener("change",renderCobertura);
+$("#cov-scope").addEventListener("click",e=>{const b=e.target.closest("button");if(!b)return;S.covScope=b.dataset.v;S.sel=null;renderCobertura()});
 $("#cov-sitio").addEventListener("change",()=>{S.sel=null;renderCobertura()});
 $("#cov-edit").addEventListener("click",()=>{S.editReq=!S.editReq;$("#cov-edit").textContent=S.editReq?"Listo":"Editar requeridos";$("#cov-edit").classList.toggle("primary",S.editReq);renderCobertura()});
 $("#cov-matrix").addEventListener("click",e=>{const b=e.target.closest("[data-cell]");if(!b)return;S.sel=S.sel===b.dataset.cell?null:b.dataset.cell;renderCobertura();if(S.sel)$("#cov-detail").scrollIntoView({block:"nearest",behavior:"smooth"})});
@@ -700,7 +826,7 @@ $("#cov-matrix").addEventListener("change",e=>{const i=e.target.closest("[data-r
   const v=i.value===""?null:Math.max(0,parseInt(i.value,10)||0);cfgUpdate({req:{[S.dim]:{[i.dataset.req]:v}}})});
 ["#l-turno","#l-pos","#l-area","#l-sitio","#l-sup"].forEach(s=>$(s).addEventListener("change",renderLista));
 $("#l-q").addEventListener("input",renderLista);
-$("#l-list").addEventListener("click",e=>{const b=e.target.closest("[data-mark]");if(b&&S.canMark)mark(b.dataset.emp,b.dataset.mark)});
+$("#l-list").addEventListener("click",e=>{const b=e.target.closest("[data-mark]");if(b&&canMarkFor(S.emps.get(b.dataset.emp)||{}))mark(b.dataset.emp,b.dataset.mark)});
 $("#l-all").addEventListener("click",markAll);
 $("#p-q").addEventListener("input",renderPersonal);
 ["#p-turno","#p-pos","#p-area","#p-sitio","#p-ger","#p-sup","#p-cargo","#p-bajas"].forEach(s=>$(s).addEventListener("change",renderPersonal));
@@ -831,7 +957,7 @@ async function startApp(session){
   if(c.data)S.cfg=Object.assign({},DEFAULT_CFG,c.data.data);
   if(e.error){renderBanner(`<div class="banner">No se pudo cargar el personal: ${esc(e.error.message)}</div>`)}
   S.emps=new Map((e.data||[]).map(r=>[r.num,r]));
-  S.loaded=true;await loadSups();refreshSelects();loadMovs();
+  S.loaded=true;await loadSups();applyPerms();refreshSelects();loadMovs();loadRecent().then(renderActive);loadProg();loadAvisos();
   await loadAttendance();
   if(S.isAdmin){const {data}=await S.sb.from("perfiles").select("id,email,rol").order("email");S.users=data||[];renderNav();renderActive()}
   subscribe();
@@ -846,6 +972,7 @@ function applyPerms(){
   S.isAdmin=S.rol==="admin";
   S.perms=new Set(S.isAdmin?PRIVS.filter(p=>!p.k.startsWith("tab:")).map(p=>p.k):((r&&r.permisos)||[]).filter(x=>!x.startsWith("tab:")));
   S.tabs=tabsOfRole(S.rol,r&&r.permisos);
+  if(S.rol!=="sin_acceso"&&S.tabs.length&&backupOf().length)["lista","vacaciones"].forEach(t=>{if(!S.tabs.includes(t))S.tabs.splice(TAB_ORDER.indexOf(t),0,t)});
   S.canMark=S.perms.has("pasar_lista");S.canPersonal=S.perms.has("editar_personal");
   S.canCatalog=S.perms.has("editar_catalogos");S.canReq=S.perms.has("editar_requeridos");
   $("#cov-edit").hidden=!S.canReq;
@@ -867,8 +994,8 @@ function subscribe(){
   S.channel=S.sb.channel("cp-live")
     .on("postgres_changes",{event:"*",schema:"public",table:"asistencia"},p=>{
       const r=p.new&&p.new.num?p.new:p.old;if(!r)return;
-      if(p.eventType==="DELETE"){ if(!p.old.fecha||p.old.fecha===S.date)delete S.att[p.old.num]; }
-      else if(r.fecha===S.date)S.att[r.num]=r.estado;
+      if(p.eventType==="DELETE"){ if(!p.old.fecha||p.old.fecha===S.date)delete S.att[p.old.num]; if(p.old.fecha)addRecent(p.old.num,p.old.fecha,null) }
+      else{ addRecent(r.num,r.fecha,r.estado); if(r.fecha===S.date)S.att[r.num]=r.estado }
       if(window.CPR)window.CPR.invalidate();
       renderActive();
     })
@@ -877,7 +1004,9 @@ function subscribe(){
     })
     .on("postgres_changes",{event:"*",schema:"public",table:"roles"},()=>{loadRoles().then(renderActive)})
     .on("postgres_changes",{event:"*",schema:"public",table:"movimientos"},()=>{loadMovs()})
-    .on("postgres_changes",{event:"*",schema:"public",table:"supervisores"},()=>{loadSups().then(renderActive)})
+    .on("postgres_changes",{event:"*",schema:"public",table:"programacion"},()=>{loadProg()})
+    .on("postgres_changes",{event:"INSERT",schema:"public",table:"avisos"},p=>{loadAvisos();if(p.new&&p.new.titulo)toast("Aviso: "+p.new.titulo)})
+    .on("postgres_changes",{event:"*",schema:"public",table:"supervisores"},()=>{loadSups().then(()=>{applyPerms();renderActive()})})
     .on("postgres_changes",{event:"*",schema:"public",table:"config"},p=>{
       if(p.new&&p.new.data){S.cfg=Object.assign({},DEFAULT_CFG,p.new.data);refreshSelects();renderActive()}
     })
