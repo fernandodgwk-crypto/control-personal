@@ -12,10 +12,17 @@ const fmtD=s=>{if(!s)return"";const [y,m,d]=String(s).slice(0,10).split("-");ret
 const VIEWS=["cobertura","lista","personal","catalogos"];
 const sitioCorto=x=>String(x||"").replace(/^MX Guadalajara North\s*/i,"")||String(x||"");
 
-const S={sb:null,session:null,rol:"lector",canMark:false,canAdmin:false,emps:new Map(),cfg:null,att:{},date:ymd(new Date()),
+const S={sb:null,session:null,rol:"lector",perms:new Set(),isAdmin:false,canMark:false,canPersonal:false,canCatalog:false,canReq:false,roles:[],emps:new Map(),cfg:null,att:{},date:ymd(new Date()),
   tab:"cobertura",dim:"posicion",editReq:false,sel:null,loaded:false,channel:null,users:[],cat:"perfiles"};
 try{const d=localStorage.getItem("cp_dim");if(d)S.dim=d;const c=localStorage.getItem("cp_cat");if(c)S.cat=c;}catch(e){}
 
+const PERMS=[
+  {id:"pasar_lista",label:"Pasar lista",desc:"Marcar asistencia, retardos, faltas, permisos, vacaciones e incapacidades."},
+  {id:"editar_personal",label:"Editar personal",desc:"Altas, bajas y fichas: celular, turno, área, sitio, gerente y certificaciones de cada persona."},
+  {id:"editar_catalogos",label:"Editar catálogos",desc:"Perfiles, áreas, sitios, gerentes, turnos y tipos de certificación."},
+  {id:"editar_requeridos",label:"Editar requeridos",desc:"Cuántas personas requiere cada área o posición por turno en la cobertura."}
+];
+const DEFAULT_ROLES=[{nombre:"admin",permisos:PERMS.map(p=>p.id)},{nombre:"supervisor",permisos:["pasar_lista"]},{nombre:"lector",permisos:[]}];
 const DEFAULT_CFG={areas:[],posiciones:[],turnos:["1 Gdl","2 Gdl","3 Gdl"],sitios:[],gerentes:[],perfiles:{},certs:[],certReq:{},req:{area:{},posicion:{}}};
 const cfg=()=>S.cfg||DEFAULT_CFG;
 const active=()=>[...S.emps.values()].filter(e=>e.activo!==false);
@@ -194,7 +201,7 @@ async function markAll(){
 
 /* ---------- personal ---------- */
 function renderPersonal(){
-  $("#p-new").hidden=!S.canAdmin;
+  $("#p-new").hidden=!S.canPersonal;
   const q=$("#p-q").value.trim().toLowerCase(),t=$("#p-turno").value,p=$("#p-pos").value,a=$("#p-area").value,st=$("#p-sitio").value,g=$("#p-ger").value,b=$("#p-bajas").checked;
   const ppl=[...S.emps.values()].filter(e=>(b||e.activo!==false)&&(!t||e.turno===t)&&(!p||e.posicion===p)&&(!a||e.area===a)&&(!st||e.sitio===st)&&(!g||e.gerente===g)&&
     (!q||e.nombre.toLowerCase().includes(q)||String(e.num).includes(q)||(e.celular||"").includes(q))).sort((x,y)=>x.nombre.localeCompare(y.nombre));
@@ -217,18 +224,18 @@ function renderPersonal(){
 let D=null;
 function openEmp(num){
   const e=num?S.emps.get(num):null;
-  if(!e&&!S.canAdmin)return;
+  if(!e&&!S.canPersonal)return;
   D={isNew:!e,data:JSON.parse(JSON.stringify(e||{num:"",nombre:"",email:"",turno:$("#l-turno").value||cfg().turnos[0]||"",posicion:"",puesto:"",area:"",sitio:"",gerente:"",supervisor:"",celular:"",certs:[],activo:true,notas:""}))};
   renderDrawer();if(e)loadHistory(e);
 }
 function closeDrawer(){D=null;$("#drawer-root").innerHTML=""}
 function opt(items,val,blank){const list=items.slice();if(val&&!list.includes(val))list.push(val);return (blank?`<option value="">${blank}</option>`:"")+list.map(i=>`<option ${i===val?"selected":""} value="${esc(i)}">${esc(i)}</option>`).join("")}
 function renderDrawer(){
-  const d=D.data,C=cfg(),ro=!S.canAdmin,dis=ro?"disabled":"";
+  const d=D.data,C=cfg(),ro=!S.canPersonal,dis=ro?"disabled":"";
   $("#drawer-root").innerHTML=`<div class="scrim" data-close></div><aside class="drawer" role="dialog" aria-modal="true" aria-labelledby="dr-title">
   <header><h2 id="dr-title">${D.isNew?"Nueva persona":esc(d.nombre)}</h2><button class="btn" data-close aria-label="Cerrar">Cerrar</button></header>
   <div class="body">
-    ${ro?'<div class="banner">Solo el administrador puede editar fichas.</div>':""}
+    ${ro?'<div class="banner">Tu rol no permite editar fichas.</div>':""}
     <div class="grid2">
       <div class="field"><label for="f-num">No. empleado</label><input id="f-num" type="text" value="${esc(d.num)}" ${D.isNew?"":"readonly"}></div>
       <div class="field"><label for="f-nombre">Nombre</label><input id="f-nombre" type="text" value="${esc(d.nombre)}" ${dis}></div>
@@ -300,16 +307,17 @@ const CATS=[
   {id:"sitios",label:"Sitios",key:"sitios",field:"sitio",group:"Organización",one:"sitio",help:"Edificio o planta a la que pertenece cada persona."},
   {id:"gerentes",label:"Gerentes",key:"gerentes",field:"gerente",group:"Organización",one:"gerente",help:"Gerente al que reporta cada persona. Debajo de cada uno se ven los supervisores de su equipo."},
   {id:"turnos",label:"Turnos",key:"turnos",field:"turno",group:"Organización",one:"turno",help:"Turnos de trabajo. Cada turno es una columna de la matriz de cobertura."},
-  {id:"usuarios",label:"Usuarios",group:"Acceso",admin:true}
+  {id:"usuarios",label:"Usuarios",group:"Acceso",admin:true},
+  {id:"roles",label:"Roles y permisos",group:"Acceso",admin:true}
 ];
 const countBy=(f,v)=>active().filter(e=>e[f]===v).length;
 function renderCatalogos(){
   const C=cfg();
-  const cats=CATS.filter(c=>!c.admin||S.canAdmin);
+  const cats=CATS.filter(c=>!c.admin||S.isAdmin);
   if(!cats.some(c=>c.id===S.cat))S.cat="perfiles";
   let nav="",g="";
   cats.forEach(c=>{if(c.group!==g){g=c.group;nav+=`<div class="cat-h">${esc(g)}</div>`}
-    const n=c.key?(C[c.key]||[]).length:(S.users.length||"");
+    const n=c.key?(C[c.key]||[]).length:c.id==="roles"?S.roles.length:(S.users.length||"");
     nav+=`<button data-cat="${c.id}" aria-current="${S.cat===c.id}">${esc(c.label)}<span class="n">${n}</span></button>`});
   $("#cat-nav").innerHTML=nav;
   const c=cats.find(x=>x.id===S.cat);
@@ -317,22 +325,23 @@ function renderCatalogos(){
   if(c.id==="perfiles")body.innerHTML=catPerfiles();
   else if(c.id==="certificaciones")body.innerHTML=catCerts();
   else if(c.id==="usuarios")body.innerHTML=catUsuarios();
+  else if(c.id==="roles")body.innerHTML=catRoles();
   else body.innerHTML=catLista(c);
 }
-function addRow(key,ph){return S.canAdmin?`<div class="toolbar"><input type="text" id="cat-new" class="grow" placeholder="${esc(ph)}" aria-label="${esc(ph)}"><button class="btn primary" data-add="${key}">Agregar</button></div>`:""}
-function delBtn(key,v){return S.canAdmin?`<button class="btn danger" data-ldel="${key}" data-v="${esc(v)}">Quitar</button>`:""}
+function addRow(key,ph){return S.canCatalog?`<div class="toolbar"><input type="text" id="cat-new" class="grow" placeholder="${esc(ph)}" aria-label="${esc(ph)}"><button class="btn primary" data-add="${key}">Agregar</button></div>`:""}
+function delBtn(key,v){return S.canCatalog?`<button class="btn danger" data-ldel="${key}" data-v="${esc(v)}">Quitar</button>`:""}
 function catPerfiles(){
-  const C=cfg(),P=C.perfiles||{},T=turnosUsed(),dis=S.canAdmin?"":"disabled";
+  const C=cfg(),P=C.perfiles||{},T=turnosUsed(),dis=S.canCatalog?"":"disabled";
   return `<div class="cathead"><h2>Perfiles</h2><p>Qué hace cada posición, a qué puesto de HR corresponde y qué certificaciones necesita. La descripción aparece en la ficha de cada persona.</p></div>
   ${addRow("posiciones","Nueva posición")}
   <div class="perfiles">${C.posiciones.map(p=>{const d=P[p]||{};const ppl=active().filter(e=>e.posicion===p);
     const porT=T.map(t=>[t,ppl.filter(e=>e.turno===t).length]).filter(x=>x[1]);
     return `<div class="panel perfil"><h3>${esc(p)} <span class="chip">${ppl.length} personas</span>${porT.map(([t,n])=>`<span class="chip acc">${esc(t)}: ${n}</span>`).join("")}</h3>
-      ${S.canAdmin?`<div class="field"><label for="pf-hr-${esc(p)}">Puesto en HR</label><input id="pf-hr-${esc(p)}" type="text" data-perf="${esc(p)}" data-pf="puestoHR" value="${esc(d.puestoHR||"")}" placeholder="Ej. Material Handler"></div>
+      ${S.canCatalog?`<div class="field"><label for="pf-hr-${esc(p)}">Puesto en HR</label><input id="pf-hr-${esc(p)}" type="text" data-perf="${esc(p)}" data-pf="puestoHR" value="${esc(d.puestoHR||"")}" placeholder="Ej. Material Handler"></div>
       <div class="field"><label for="pf-ds-${esc(p)}">Qué hace</label><textarea id="pf-ds-${esc(p)}" data-perf="${esc(p)}" data-pf="descripcion" rows="3" placeholder="Responsabilidades principales">${esc(d.descripcion||"")}</textarea></div>`
       :`${d.puestoHR?`<div class="muted" style="font-size:13px">Puesto en HR: ${esc(d.puestoHR)}</div>`:""}<p class="desc">${d.descripcion?esc(d.descripcion):'<span class="muted">Sin descripción.</span>'}</p>`}
       <div class="field"><label>Certificaciones requeridas</label><div style="display:flex;gap:6px 12px;flex-wrap:wrap">${C.certs.map(n=>`<label class="ck"><input type="checkbox" data-creq="${esc(p)}" value="${esc(n)}" ${((C.certReq||{})[p]||[]).includes(n)?"checked":""} ${dis}> ${esc(n)}</label>`).join("")||'<span class="muted">Agrega certificaciones en su catálogo.</span>'}</div></div>
-      ${S.canAdmin?`<div>${delBtn("posiciones",p)}</div>`:""}
+      ${S.canCatalog?`<div>${delBtn("posiciones",p)}</div>`:""}
     </div>`}).join("")||'<div class="empty">Sin posiciones.</div>'}</div>`;
 }
 function catLista(c){
@@ -346,10 +355,10 @@ function catLista(c){
       const sups=extra?[...new Set(active().filter(e=>e.gerente===v).map(e=>e.supervisor).filter(Boolean))].sort():[];
       return `<tr><td>${esc(c.id==="sitios"?sitioCorto(v):v)}${c.id==="sitios"&&sitioCorto(v)!==v?`<div class="muted" style="font-size:12px">${esc(v)}</div>`:""}</td><td class="num">${n||'<span class="muted">0</span>'}</td>${extra?`<td style="font-size:13.5px">${sups.map(esc).join(", ")||'<span class="muted">—</span>'}</td>`:""}<td style="text-align:right">${delBtn(c.key,v)}</td></tr>`}).join("")||`<tr><td colspan="4" class="empty">Vacío.</td></tr>`
   }</tbody></table></div></div>
-  ${orphan.length?`<div class="banner">Hay personas con ${esc(c.one)} que no está en el catálogo: ${orphan.map(esc).join(", ")}. ${S.canAdmin?"Agrégalo arriba o corrige sus fichas.":""}</div>`:""}`;
+  ${orphan.length?`<div class="banner">Hay personas con ${esc(c.one)} que no está en el catálogo: ${orphan.map(esc).join(", ")}. ${S.canCatalog?"Agrégalo arriba o corrige sus fichas.":""}</div>`:""}`;
 }
 function catCerts(){
-  const C=cfg(),on=S.date,soon30=addDays(on,30),soon60=addDays(on,60),A=active(),dis=S.canAdmin?"":"disabled";
+  const C=cfg(),on=S.date,soon30=addDays(on,30),soon60=addDays(on,60),A=active(),dis=S.canCatalog?"":"disabled";
   const exp=[];A.forEach(e=>(e.certs||[]).forEach(c=>{if(c.vence&&c.vence<=soon60)exp.push({e,c})}));
   exp.sort((a,b)=>a.c.vence.localeCompare(b.c.vence));
   const miss=A.map(e=>({e,m:missingCerts(e,on)})).filter(x=>x.m.length);
@@ -358,14 +367,28 @@ function catCerts(){
   ${addRow("certs","Nueva certificación")}
   <div class="panel" style="padding:0"><div class="scroll"><table><thead><tr><th>Certificación</th><th>Requerida para</th><th class="num">Vigentes</th><th class="num">Por vencer</th><th class="num">Vencidas</th><th></th></tr></thead><tbody>${
     C.certs.map(n=>{let v=0,p=0,x=0;A.forEach(e=>(e.certs||[]).forEach(c=>{if(c.nombre!==n)return;if(!certValid(c,on))x++;else if(c.vence&&c.vence<=soon30)p++;else v++}));
-      return `<tr><td>${esc(n)}</td><td>${reqBy(n).map(p=>`<span class="chip">${esc(p)}</span>`).join(" ")||'<span class="muted">—</span>'}</td><td class="num">${v}</td><td class="num" style="color:${p?"var(--warn)":"inherit"}">${p}</td><td class="num" style="color:${x?"var(--bad)":"inherit"}">${x}</td><td style="text-align:right">${S.canAdmin?`<button class="btn danger" data-certdel="${esc(n)}">Quitar</button>`:""}</td></tr>`}).join("")||'<tr><td colspan="6" class="empty">Sin certificaciones.</td></tr>'
+      return `<tr><td>${esc(n)}</td><td>${reqBy(n).map(p=>`<span class="chip">${esc(p)}</span>`).join(" ")||'<span class="muted">—</span>'}</td><td class="num">${v}</td><td class="num" style="color:${p?"var(--warn)":"inherit"}">${p}</td><td class="num" style="color:${x?"var(--bad)":"inherit"}">${x}</td><td style="text-align:right">${S.canCatalog?`<button class="btn danger" data-certdel="${esc(n)}">Quitar</button>`:""}</td></tr>`}).join("")||'<tr><td colspan="6" class="empty">Sin certificaciones.</td></tr>'
   }</tbody></table></div></div>
   <div class="panel"><h2>Vencimientos <span class="sub">vencidas y próximos 60 días</span></h2><div class="scroll">${exp.length?`<table><thead><tr><th>Persona</th><th>Certificación</th><th>Vence</th><th>Turno</th><th>Celular</th></tr></thead><tbody>${exp.map(({e,c})=>`<tr class="click" data-emp="${esc(e.num)}"><td>${esc(e.nombre)}</td><td>${esc(c.nombre)}${c.folio?` <span class="mono muted">${esc(c.folio)}</span>`:""}</td><td><span class="chip ${c.vence<on?"bad":"warn"}">${c.vence<on?"Vencida ":""}${fmtD(c.vence)}</span></td><td>${esc(e.turno)}</td><td class="tel">${esc(e.celular||"—")}</td></tr>`).join("")}</tbody></table>`:`<div class="empty">Nada vence en los próximos 60 días.</div>`}</div></div>
   <div class="panel"><h2>Sin la certificación que pide su posición</h2><div class="scroll">${miss.length?`<table><thead><tr><th>Persona</th><th>Posición</th><th>Le falta</th><th>Turno</th></tr></thead><tbody>${miss.map(({e,m})=>`<tr class="click" data-emp="${esc(e.num)}"><td>${esc(e.nombre)}</td><td>${esc(e.posicion)}</td><td>${m.map(n=>`<span class="chip warn">${esc(n)}</span>`).join(" ")}</td><td>${esc(e.turno)}</td></tr>`).join("")}</tbody></table>`:`<div class="empty">Todos tienen las certificaciones que pide su posición.</div>`}</div></div>`;
 }
+function catRoles(){
+  const users=S.users;
+  const head=`<div class="cathead"><h2>Roles y permisos</h2><p>Marca qué puede hacer cada rol. Todos los roles pueden consultar la información. Los cambios se aplican al momento y la base de datos los hace cumplir.</p></div>`;
+  if(!S.rolesDb)return head+`<div class="banner">Falta activar los roles en la base de datos. Ejecuta el archivo supabase/roles.sql en el SQL Editor de Supabase y recarga la página.</div>`;
+  return head+`<div class="toolbar"><input type="text" id="role-new" class="grow" placeholder="Nuevo rol (ej. rh, lider)" aria-label="Nuevo rol"><button class="btn primary" data-radd>Agregar rol</button></div>
+  <div class="panel" style="padding:0"><div class="scroll"><table class="roles"><thead><tr><th>Rol</th>${PERMS.map(p=>`<th title="${esc(p.desc)}" style="text-align:center">${esc(p.label)}</th>`).join("")}<th class="num">Usuarios</th><th></th></tr></thead><tbody>${
+    S.roles.map(r=>{const adm=r.nombre==="admin";const n=users.filter(u=>u.rol===r.nombre).length;
+      return `<tr><td><b>${esc(r.nombre)}</b><div><input type="text" data-rdesc="${esc(r.nombre)}" value="${esc(r.descripcion||"")}" placeholder="Descripción" aria-label="Descripción de ${esc(r.nombre)}" style="width:100%;margin-top:4px;font-size:13px" ${adm?"disabled":""}></div></td>
+      ${PERMS.map(p=>`<td style="text-align:center"><input type="checkbox" data-rperm="${esc(r.nombre)}" value="${p.id}" aria-label="${esc(p.label)} para ${esc(r.nombre)}" ${adm||(r.permisos||[]).includes(p.id)?"checked":""} ${adm?"disabled":""}></td>`).join("")}
+      <td class="num">${n}</td><td style="text-align:right">${adm?'<span class="muted" style="font-size:12px">Siempre todo</span>':`<button class="btn danger" data-rdel="${esc(r.nombre)}" ${n?'disabled title="Tiene usuarios asignados"':""}>Quitar</button>`}</td></tr>`}).join("")
+  }</tbody></table></div></div>
+  <div class="panel"><h2>Qué permite cada permiso</h2><dl style="margin:0;display:grid;grid-template-columns:max-content 1fr;gap:6px 14px">${PERMS.map(p=>`<dt style="font-weight:600">${esc(p.label)}</dt><dd style="margin:0" class="muted">${esc(p.desc)}</dd>`).join("")}
+    <dt style="font-weight:600">Solo admin</dt><dd style="margin:0" class="muted">Administrar usuarios y roles. El rol admin siempre tiene todos los permisos y no se puede quitar.</dd></dl></div>`;
+}
 function catUsuarios(){
-  return `<div class="cathead"><h2>Usuarios</h2><p>admin: todo · supervisor: pasa lista · lector: solo consulta.</p></div>
-  <div class="panel" style="padding:0"><div class="scroll">${S.users.length?`<table><thead><tr><th>Correo</th><th>Rol</th></tr></thead><tbody>${S.users.map(u=>`<tr><td>${esc(u.email)}${u.id===S.session.user.id?' <span class="chip">tú</span>':""}</td><td><select data-urol="${esc(u.id)}" aria-label="Rol de ${esc(u.email)}" ${u.id===S.session.user.id?"disabled":""}>${["admin","supervisor","lector"].map(r=>`<option ${u.rol===r?"selected":""}>${r}</option>`).join("")}</select></td></tr>`).join("")}</tbody></table>`:`<div class="empty">Cargando usuarios…</div>`}</div></div>`;
+  return `<div class="cathead"><h2>Usuarios</h2><p>Asigna a cada usuario un rol. Lo que puede hacer cada rol se define en Roles y permisos.</p></div>
+  <div class="panel" style="padding:0"><div class="scroll">${S.users.length?`<table><thead><tr><th>Correo</th><th>Rol</th></tr></thead><tbody>${S.users.map(u=>`<tr><td>${esc(u.email)}${u.id===S.session.user.id?' <span class="chip">tú</span>':""}</td><td><select data-urol="${esc(u.id)}" aria-label="Rol de ${esc(u.email)}" ${u.id===S.session.user.id?"disabled":""}>${S.roles.map(r=>`<option value="${esc(r.nombre)}" ${u.rol===r.nombre?"selected":""}>${esc(r.nombre)}</option>`).join("")}</select></td></tr>`).join("")}</tbody></table>`:`<div class="empty">Cargando usuarios…</div>`}</div></div>`;
 }
 function deepMerge(a,b){const o=Array.isArray(a)?a.slice():Object.assign({},a);Object.keys(b).forEach(k=>{const v=b[k];if(v&&typeof v==="object"&&!Array.isArray(v)&&o[k]&&typeof o[k]==="object"&&!Array.isArray(o[k]))o[k]=deepMerge(o[k],v);else if(v===null)delete o[k];else o[k]=v});return o}
 let cfgChain=Promise.resolve();
@@ -392,7 +415,7 @@ function setTab(t){
 }
 function renderBanner(msg){
   let h=msg||"";
-  if(!h&&S.session&&S.rol==="lector")h=`<div class="banner">Tu usuario es de solo consulta. Pide al administrador el rol de supervisor para pasar lista.</div>`;
+  if(!h&&S.session&&S.perms&&!S.perms.size)h=`<div class="banner">Tu rol solo permite consultar. Si necesitas pasar lista o editar, pídelo al administrador.</div>`;
   $("#banner").innerHTML=h;
 }
 window.addEventListener("hashchange",()=>setTab(location.hash.slice(1)));
@@ -431,6 +454,11 @@ CV.addEventListener("click",e=>{
   const a=e.target.closest("[data-add]");
   if(a){const k=a.dataset.add;const v=$("#cat-new").value.trim();if(!v)return;
     const arr=cfg()[k]||[];if(arr.includes(v)){toast("Ya existe");return}cfgUpdate({[k]:arr.concat([v])});return}
+  if(e.target.closest("[data-radd]")){addRole();return}
+  const rd=e.target.closest("[data-rdel]");
+  if(rd){
+    if(rd.dataset.confirm!=="1"){rd.dataset.confirm="1";rd.textContent="¿Seguro?";setTimeout(()=>{if(rd.isConnected){rd.dataset.confirm="";rd.textContent="Quitar"}},3000);return}
+    delRole(rd.dataset.rdel);return}
   const d=e.target.closest("[data-ldel],[data-certdel]");
   if(d){
     if(d.dataset.confirm!=="1"){d.dataset.confirm="1";d.textContent="¿Seguro?";setTimeout(()=>{if(d.isConnected){d.dataset.confirm="";d.textContent="Quitar"}},3000);return}
@@ -441,12 +469,31 @@ CV.addEventListener("click",e=>{
     cfgUpdate(patch);
   }
 });
-CV.addEventListener("keydown",e=>{if(e.key==="Enter"&&e.target.id==="cat-new"){const b=CV.querySelector("[data-add]");if(b)b.click()}});
+CV.addEventListener("keydown",e=>{if(e.key==="Enter"&&e.target.id==="cat-new"){const b=CV.querySelector("[data-add]");if(b)b.click()}if(e.key==="Enter"&&e.target.id==="role-new")addRole()});
+async function addRole(){
+  const v=($("#role-new").value||"").trim().toLowerCase();if(!v)return;
+  if(S.roles.some(r=>r.nombre===v)){toast("Ese rol ya existe");return}
+  const {error}=await S.sb.from("roles").insert({nombre:v,permisos:[]});
+  if(error){toast(errMsg(error));return}
+  toast("Rol agregado");await loadRoles();renderActive();
+}
+async function delRole(n){
+  const {error}=await S.sb.from("roles").delete().eq("nombre",n);
+  if(error){toast(/foreign key|23503/i.test(error.message+error.code)?"No se puede quitar: hay usuarios con ese rol.":errMsg(error));return}
+  toast("Rol quitado");await loadRoles();renderActive();
+}
 CV.addEventListener("change",async e=>{
   const c=e.target.closest("[data-creq]");
   if(c){const p=c.dataset.creq;const vals=[...CV.querySelectorAll("[data-creq]")].filter(x=>x.dataset.creq===p&&x.checked).map(x=>x.value);cfgUpdate({certReq:{[p]:vals}});return}
   const f=e.target.closest("[data-perf]");
   if(f){cfgUpdate({perfiles:{[f.dataset.perf]:{[f.dataset.pf]:f.value.trim()}}});toast("Perfil guardado");return}
+  const rp=e.target.closest("[data-rperm]");
+  if(rp){const n=rp.dataset.rperm;const vals=[...CV.querySelectorAll("[data-rperm]")].filter(x=>x.dataset.rperm===n&&x.checked).map(x=>x.value);
+    const {error}=await S.sb.from("roles").update({permisos:vals}).eq("nombre",n);
+    if(error){toast(errMsg(error));rp.checked=!rp.checked;return}
+    const r=S.roles.find(x=>x.nombre===n);if(r)r.permisos=vals;toast("Permisos de "+n+" actualizados");return}
+  const rds=e.target.closest("[data-rdesc]");
+  if(rds){const {error}=await S.sb.from("roles").update({descripcion:rds.value.trim()}).eq("nombre",rds.dataset.rdesc);if(error)toast(errMsg(error));else toast("Descripción guardada");return}
   const s=e.target.closest("[data-urol]");
   if(s){const {error}=await S.sb.from("perfiles").update({rol:s.value}).eq("id",s.dataset.urol);
     if(error)toast(errMsg(error));else{const u=S.users.find(x=>x.id===s.dataset.urol);if(u)u.rol=s.value;toast("Rol actualizado")}}
@@ -478,9 +525,9 @@ async function startApp(session){
   $("#login").hidden=true;$("#who").hidden=false;document.querySelector("nav.tabs").hidden=false;$(".datebox").hidden=false;
   $("#who-email").textContent=session.user.email;
   const {data:perfil}=await S.sb.from("perfiles").select("rol").eq("id",session.user.id).maybeSingle();
-  S.rol=(perfil&&perfil.rol)||"lector";S.canAdmin=S.rol==="admin";S.canMark=S.canAdmin||S.rol==="supervisor";
+  S.rol=(perfil&&perfil.rol)||"lector";await loadRoles();
   $("#who-rol").textContent=S.rol;
-  $("#cov-edit").hidden=!S.canAdmin;
+  
   renderBanner();setTab(location.hash.slice(1)||S.tab);
   const [c,e]=await Promise.all([S.sb.from("config").select("data").eq("id",1).maybeSingle(),S.sb.from("empleados").select("*")]);
   if(c.data)S.cfg=Object.assign({},DEFAULT_CFG,c.data.data);
@@ -488,8 +535,24 @@ async function startApp(session){
   S.emps=new Map((e.data||[]).map(r=>[r.num,r]));
   S.loaded=true;refreshSelects();
   await loadAttendance();
-  if(S.canAdmin){const {data}=await S.sb.from("perfiles").select("id,email,rol").order("email");S.users=data||[];renderActive()}
+  if(S.isAdmin){const {data}=await S.sb.from("perfiles").select("id,email,rol").order("email");S.users=data||[];renderActive()}
   subscribe();
+}
+async function loadRoles(){
+  const {data,error}=await S.sb.from("roles").select("nombre,descripcion,permisos").order("nombre");
+  S.roles=(!error&&data&&data.length)?data:DEFAULT_ROLES;S.rolesDb=!error;
+  applyPerms();
+}
+function applyPerms(){
+  const r=S.roles.find(x=>x.nombre===S.rol);
+  S.isAdmin=S.rol==="admin";
+  S.perms=new Set(S.isAdmin?PERMS.map(p=>p.id):((r&&r.permisos)||[]));
+  S.canMark=S.perms.has("pasar_lista");S.canPersonal=S.perms.has("editar_personal");
+  S.canCatalog=S.perms.has("editar_catalogos");S.canReq=S.perms.has("editar_requeridos");
+  $("#who-rol").textContent=S.rol;
+  $("#cov-edit").hidden=!S.canReq;
+  if(!S.canReq&&S.editReq){S.editReq=false;$("#cov-edit").textContent="Editar requeridos";$("#cov-edit").classList.remove("primary")}
+  renderBanner();
 }
 async function loadAttendance(){
   const fecha=S.date;
@@ -510,6 +573,7 @@ function subscribe(){
     .on("postgres_changes",{event:"*",schema:"public",table:"empleados"},p=>{
       if(p.eventType==="DELETE")S.emps.delete(p.old.num);else S.emps.set(p.new.num,p.new);refreshSelects();renderActive();
     })
+    .on("postgres_changes",{event:"*",schema:"public",table:"roles"},()=>{loadRoles().then(renderActive)})
     .on("postgres_changes",{event:"*",schema:"public",table:"config"},p=>{
       if(p.new&&p.new.data){S.cfg=Object.assign({},DEFAULT_CFG,p.new.data);refreshSelects();renderActive()}
     })
