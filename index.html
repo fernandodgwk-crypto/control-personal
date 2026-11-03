@@ -1,10 +1,10 @@
 <!doctype html>
 <html lang="es">
 <head>
-<link rel="icon" type="image/png" href="img/logo.png">
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <meta name="robots" content="noindex,nofollow">
+<link rel="icon" type="image/png" href="img/logo.png">
 <title>Control de Personal - METALES</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@600;700&family=Barlow:wght@400;500;600&family=JetBrains+Mono:wght@500&display=swap">
@@ -147,6 +147,24 @@ tr.click{cursor:pointer} tr.click:hover td{background:var(--surface2)}
 .login form{width:min(380px,100%);display:flex;flex-direction:column;gap:12px}
 .login h2{font-family:var(--f-display);font-size:26px;margin:0}
 .who-box{display:flex;align-items:center;gap:8px;font-size:13px;color:var(--muted);flex-wrap:wrap}
+.catlayout{display:grid;grid-template-columns:230px minmax(0,1fr);gap:18px;align-items:start}
+.catnav{position:sticky;top:calc(env(safe-area-inset-top,0px) + 118px);display:flex;flex-direction:column;gap:2px;background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:8px}
+.catnav .cat-h{font-size:11.5px;text-transform:uppercase;letter-spacing:.07em;color:var(--muted);padding:8px 10px 4px}
+.catnav button{display:flex;justify-content:space-between;align-items:center;gap:8px;border:0;background:none;text-align:left;padding:9px 10px;border-radius:7px;cursor:pointer;font-weight:500;color:var(--ink)}
+.catnav button:hover{background:var(--surface2)}
+.catnav button[aria-current="true"]{background:var(--accent-soft);color:var(--accent);font-weight:600}
+.catnav button .n{font-family:var(--f-mono);font-size:12px;color:var(--muted)}
+.catbody{display:flex;flex-direction:column;gap:16px;min-width:0}
+.cathead{display:flex;flex-wrap:wrap;align-items:flex-end;gap:10px 16px}
+.cathead h2{font-family:var(--f-display);font-size:26px;margin:0}
+.cathead p{margin:0;color:var(--muted);flex-basis:100%}
+.perfiles{display:grid;grid-template-columns:repeat(auto-fill,minmax(320px,1fr));gap:12px}
+.perfil{display:flex;flex-direction:column;gap:10px}
+.perfil h3{margin:0;font-family:var(--f-display);font-size:21px;display:flex;align-items:baseline;gap:8px;flex-wrap:wrap}
+.perfil .desc{white-space:pre-wrap;margin:0}
+@media (max-width:760px){.catlayout{grid-template-columns:1fr}.catnav{position:static;flex-direction:row;overflow-x:auto;padding:6px}.catnav .cat-h{display:none}.catnav button{white-space:nowrap}}
+.field label.ck{display:flex;gap:6px;align-items:center;text-transform:none;letter-spacing:0;font-size:13.5px;color:var(--ink)}
+.field label.ck input{width:auto;flex:none}
 .toast{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(18px + env(safe-area-inset-bottom,0px));background:var(--ink);color:var(--bg);padding:9px 16px;border-radius:8px;z-index:30;font-weight:500}
 @media (prefers-reduced-motion:no-preference){.cellbox,.mk{transition:background .12s,border-color .12s}}
 </style>
@@ -164,8 +182,7 @@ tr.click{cursor:pointer} tr.click:hover td{background:var(--surface2)}
       <a href="#cobertura" data-tab="cobertura">Cobertura</a>
       <a href="#lista" data-tab="lista">Pase de lista</a>
       <a href="#personal" data-tab="personal">Personal</a>
-      <a href="#certificaciones" data-tab="certificaciones">Certificaciones</a>
-      <a href="#ajustes" data-tab="ajustes">Ajustes</a>
+      <a href="#catalogos" data-tab="catalogos">Catálogos</a>
     </nav>
   </div>
 </header>
@@ -190,6 +207,7 @@ tr.click{cursor:pointer} tr.click:hover td{background:var(--surface2)}
       <span class="muted">Ver por</span>
       <div class="seg" id="cov-dim"><button data-v="posicion" aria-pressed="true">Posición</button><button data-v="area" aria-pressed="false">Área</button></div>
       <select id="cov-turno" aria-label="Turno"></select>
+      <select id="cov-sitio" aria-label="Sitio"></select>
       <span class="grow"></span>
       <button class="btn" id="cov-edit">Editar requeridos</button>
     </div>
@@ -203,6 +221,7 @@ tr.click{cursor:pointer} tr.click:hover td{background:var(--surface2)}
       <select id="l-turno" aria-label="Turno"></select>
       <select id="l-pos" aria-label="Posición"></select>
       <select id="l-area" aria-label="Área"></select>
+      <select id="l-sitio" aria-label="Sitio"></select>
       <input type="text" id="l-q" class="grow" placeholder="Buscar nombre o número">
       <button class="btn" id="l-all">Marcar pendientes como asistencia</button>
     </div>
@@ -217,34 +236,19 @@ tr.click{cursor:pointer} tr.click:hover td{background:var(--surface2)}
       <select id="p-turno" aria-label="Turno"></select>
       <select id="p-pos" aria-label="Posición"></select>
       <select id="p-area" aria-label="Área"></select>
+      <select id="p-sitio" aria-label="Sitio"></select>
+      <select id="p-ger" aria-label="Gerente"></select>
       <label class="muted" style="display:flex;gap:5px;align-items:center"><input type="checkbox" id="p-bajas"> Incluir bajas</label>
       <button class="btn primary" id="p-new">Agregar persona</button>
     </div>
     <div class="panel" style="padding:0"><div id="p-table" class="scroll"></div></div>
   </section>
 
-  <section class="view" id="v-certificaciones" hidden>
-    <div class="cols2">
-      <div class="panel"><h2>Catálogo <span class="sub">vigentes · por vencer (30 días) · vencidas</span></h2><div id="c-cat"></div>
-        <div class="toolbar" style="margin-top:12px"><input type="text" id="c-new" class="grow" placeholder="Nueva certificación"><button class="btn" id="c-add">Agregar</button></div></div>
-      <div class="panel"><h2>Requeridas por posición</h2><p class="muted" style="margin:0 0 10px">Si una posición exige una certificación, la cobertura avisa cuando alguien presente no la tiene vigente.</p><div id="c-req"></div></div>
+  <section class="view" id="v-catalogos" hidden>
+    <div class="catlayout">
+      <nav class="catnav" id="cat-nav" aria-label="Catálogos"></nav>
+      <div class="catbody" id="cat-body"></div>
     </div>
-    <div class="panel"><h2>Vencimientos <span class="sub">vencidas y próximos 60 días</span></h2><div id="c-exp" class="scroll"></div></div>
-    <div class="panel"><h2>Sin la certificación que pide su posición</h2><div id="c-miss" class="scroll"></div></div>
-  </section>
-
-  <section class="view" id="v-ajustes" hidden>
-    <div class="cols2">
-      <div class="panel"><h2>Áreas</h2><div id="a-areas" class="listedit"></div>
-        <div class="toolbar" style="margin-top:12px"><input type="text" id="a-area-new" class="grow" placeholder="Nueva área"><button class="btn" data-add="areas">Agregar</button></div></div>
-      <div class="panel"><h2>Posiciones</h2><div id="a-pos" class="listedit"></div>
-        <div class="toolbar" style="margin-top:12px"><input type="text" id="a-pos-new" class="grow" placeholder="Nueva posición"><button class="btn" data-add="posiciones">Agregar</button></div></div>
-    </div>
-    <div class="panel"><h2>Turnos</h2><div id="a-turnos" class="listedit"></div>
-      <div class="toolbar" style="margin-top:12px"><input type="text" id="a-turno-new" class="grow" placeholder="Nuevo turno"><button class="btn" data-add="turnos">Agregar</button></div></div>
-    <div class="panel" id="a-users-panel" hidden><h2>Usuarios <span class="sub">admin: todo · supervisor: pasa lista · lector: solo consulta</span></h2><div id="a-users" class="scroll"></div>
-      <p class="muted" style="margin:10px 0 0"></p></div>
-    <p class="muted"></p>
   </section>
 </main>
 

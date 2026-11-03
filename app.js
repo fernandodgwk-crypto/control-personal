@@ -9,13 +9,14 @@ const pad=n=>String(n).padStart(2,"0");
 const ymd=d=>d.getFullYear()+"-"+pad(d.getMonth()+1)+"-"+pad(d.getDate());
 const addDays=(s,n)=>{const d=new Date(s+"T12:00:00");d.setDate(d.getDate()+n);return ymd(d)};
 const fmtD=s=>{if(!s)return"";const [y,m,d]=String(s).slice(0,10).split("-");return d+"/"+m+"/"+y};
-const VIEWS=["cobertura","lista","personal","certificaciones","ajustes"];
+const VIEWS=["cobertura","lista","personal","catalogos"];
+const sitioCorto=x=>String(x||"").replace(/^MX Guadalajara North\s*/i,"")||String(x||"");
 
 const S={sb:null,session:null,rol:"lector",canMark:false,canAdmin:false,emps:new Map(),cfg:null,att:{},date:ymd(new Date()),
-  tab:"cobertura",dim:"posicion",editReq:false,sel:null,loaded:false,channel:null,users:[]};
-try{const d=localStorage.getItem("cp_dim");if(d)S.dim=d;}catch(e){}
+  tab:"cobertura",dim:"posicion",editReq:false,sel:null,loaded:false,channel:null,users:[],cat:"perfiles"};
+try{const d=localStorage.getItem("cp_dim");if(d)S.dim=d;const c=localStorage.getItem("cp_cat");if(c)S.cat=c;}catch(e){}
 
-const DEFAULT_CFG={areas:[],posiciones:[],turnos:["1 Gdl","2 Gdl","3 Gdl"],certs:[],certReq:{},req:{area:{},posicion:{}}};
+const DEFAULT_CFG={areas:[],posiciones:[],turnos:["1 Gdl","2 Gdl","3 Gdl"],sitios:[],gerentes:[],perfiles:{},certs:[],certReq:{},req:{area:{},posicion:{}}};
 const cfg=()=>S.cfg||DEFAULT_CFG;
 const active=()=>[...S.emps.values()].filter(e=>e.activo!==false);
 const markOf=e=>S.att[e.num]||null;
@@ -31,9 +32,9 @@ function errMsg(e){
 }
 
 /* ---------- selects ---------- */
-function fillSelect(el,items,allLabel){
-  const cur=el.value;
-  el.innerHTML=(allLabel?`<option value="">${esc(allLabel)}</option>`:"")+items.map(i=>`<option value="${esc(i)}">${esc(i)}</option>`).join("");
+function fillSelect(el,items,allLabel,lab){
+  const cur=el.value;lab=lab||(x=>x);
+  el.innerHTML=(allLabel?`<option value="">${esc(allLabel)}</option>`:"")+items.map(i=>`<option value="${esc(i)}">${esc(lab(i))}</option>`).join("");
   if([...el.options].some(o=>o.value===cur))el.value=cur;
 }
 function turnosUsed(){const c=cfg().turnos.slice();active().forEach(e=>{if(e.turno&&!c.includes(e.turno))c.push(e.turno)});return c}
@@ -48,7 +49,12 @@ function refreshSelects(){
   fillSelect($("#p-turno"),T,"Todos los turnos");
   fillSelect($("#p-pos"),C.posiciones,"Todas las posiciones");
   fillSelect($("#p-area"),C.areas,"Todas las áreas");
+  const sit=listUsed("sitios","sitio");
+  ["#cov-sitio","#l-sitio","#p-sitio"].forEach(id=>fillSelect($(id),sit,"Todos los sitios",sitioCorto));
+  fillSelect($("#p-ger"),listUsed("gerentes","gerente"),"Todos los gerentes");
 }
+function listUsed(k,f){const c=(cfg()[k]||[]).slice();active().forEach(e=>{if(e[f]&&!c.includes(e[f]))c.push(e[f])});return c}
+const covBase=()=>{const st=$("#cov-sitio").value;return active().filter(e=>!st||e.sitio===st)};
 
 /* ---------- coverage ---------- */
 function coverage(){
@@ -56,7 +62,7 @@ function coverage(){
   const keys=dim==="area"?C.areas.slice():C.posiciones.slice();
   const cells={};
   const get=(k,t)=>{const id=k+"__"+t;return cells[id]||(cells[id]={k,t,plant:[],pres:[],aus:[],pend:[],sinCert:[]})};
-  active().forEach(e=>{
+  covBase().forEach(e=>{
     let k=e[dim]||"";if(!keys.includes(k))k="";
     const c=get(k,e.turno);c.plant.push(e);
     const s=markOf(e);
@@ -83,7 +89,7 @@ function coverage(){
 function renderCobertura(){
   const {rows,T}=coverage();const ft=$("#cov-turno").value;
   const TT=ft?[ft]:T;
-  const all=active().filter(e=>!ft||e.turno===ft);
+  const all=covBase().filter(e=>!ft||e.turno===ft);
   let pres=0,aus=0,pend=0;all.forEach(e=>{const s=markOf(e);if(!s)pend++;else if(PRESENT.has(s))pres++;else aus++});
   const flat=rows.flatMap(r=>r.cells).filter(c=>c.k!==""&&TT.includes(c.t));
   const bad=flat.filter(c=>c.state==="bad"),pendC=flat.filter(c=>c.state==="pend"),certW=flat.filter(c=>c.sinCert.length);
@@ -152,8 +158,8 @@ function renderCellDetail(){
 
 /* ---------- roll call ---------- */
 function rollPeople(){
-  const t=$("#l-turno").value,p=$("#l-pos").value,a=$("#l-area").value,q=$("#l-q").value.trim().toLowerCase();
-  return active().filter(e=>e.turno===t&&(!p||e.posicion===p)&&(!a||e.area===a)&&(!q||e.nombre.toLowerCase().includes(q)||String(e.num).includes(q)))
+  const t=$("#l-turno").value,p=$("#l-pos").value,a=$("#l-area").value,st=$("#l-sitio").value,q=$("#l-q").value.trim().toLowerCase();
+  return active().filter(e=>e.turno===t&&(!p||e.posicion===p)&&(!a||e.area===a)&&(!st||e.sitio===st)&&(!q||e.nombre.toLowerCase().includes(q)||String(e.num).includes(q)))
     .sort((x,y)=>(x.posicion||"").localeCompare(y.posicion||"")||x.nombre.localeCompare(y.nombre));
 }
 function renderLista(){
@@ -189,16 +195,18 @@ async function markAll(){
 /* ---------- personal ---------- */
 function renderPersonal(){
   $("#p-new").hidden=!S.canAdmin;
-  const q=$("#p-q").value.trim().toLowerCase(),t=$("#p-turno").value,p=$("#p-pos").value,a=$("#p-area").value,b=$("#p-bajas").checked;
-  const ppl=[...S.emps.values()].filter(e=>(b||e.activo!==false)&&(!t||e.turno===t)&&(!p||e.posicion===p)&&(!a||e.area===a)&&
+  const q=$("#p-q").value.trim().toLowerCase(),t=$("#p-turno").value,p=$("#p-pos").value,a=$("#p-area").value,st=$("#p-sitio").value,g=$("#p-ger").value,b=$("#p-bajas").checked;
+  const ppl=[...S.emps.values()].filter(e=>(b||e.activo!==false)&&(!t||e.turno===t)&&(!p||e.posicion===p)&&(!a||e.area===a)&&(!st||e.sitio===st)&&(!g||e.gerente===g)&&
     (!q||e.nombre.toLowerCase().includes(q)||String(e.num).includes(q)||(e.celular||"").includes(q))).sort((x,y)=>x.nombre.localeCompare(y.nombre));
   if(!ppl.length){$("#p-table").innerHTML=`<div class="empty">${S.loaded?"Sin resultados.":"Cargando personal…"}</div>`;return}
   const soon=addDays(S.date,30);
-  $("#p-table").innerHTML=`<table><thead><tr><th>Nombre</th><th>Turno</th><th>Posición</th><th>Área</th><th>Celular</th><th>Certificaciones</th><th>Hoy</th></tr></thead><tbody>${
+  $("#p-table").innerHTML=`<table><thead><tr><th>Nombre</th><th>Turno</th><th>Posición</th><th>Área</th><th>Sitio</th><th>Reporta a</th><th>Celular</th><th>Certificaciones</th><th>Hoy</th></tr></thead><tbody>${
     ppl.map(e=>{const s=markOf(e);const miss=missingCerts(e,S.date);
       const certs=(e.certs||[]).map(c=>{const st=!certValid(c,S.date)?"bad":(c.vence&&c.vence<=soon?"warn":"ok");return `<span class="chip ${st}" title="${c.vence?"Vence "+fmtD(c.vence):"Sin vencimiento"}">${esc(c.nombre)}</span>`}).join(" ");
       return `<tr class="click" data-emp="${esc(e.num)}"><td><b style="font-weight:600">${esc(e.nombre)}</b>${e.activo===false?' <span class="chip">Baja</span>':""}<div class="mono muted">${esc(e.num)} · ${esc(e.puesto||"")}</div></td>
       <td>${esc(e.turno||"—")}</td><td>${esc(e.posicion||"—")}</td><td>${e.area?esc(e.area):'<span class="muted">Sin asignar</span>'}</td>
+      <td>${esc(sitioCorto(e.sitio)||"—")}</td>
+      <td style="font-size:13.5px">${e.supervisor?esc(e.supervisor):'<span class="muted">—</span>'}${e.gerente?`<div class="muted" style="font-size:12px">Gerente: ${esc(e.gerente)}</div>`:""}</td>
       <td class="tel">${e.celular?esc(e.celular):'<span class="muted" style="font-family:var(--f-body)">Falta</span>'}</td>
       <td>${certs||'<span class="muted">—</span>'}${miss.length?` <span class="chip warn">falta ${esc(miss.join(", "))}</span>`:""}</td>
       <td>${s?`<span class="chip ${PRESENT.has(s)?"ok":"bad"}">${ST[s]}</span>`:'<span class="muted">—</span>'}</td></tr>`}).join("")
@@ -210,7 +218,7 @@ let D=null;
 function openEmp(num){
   const e=num?S.emps.get(num):null;
   if(!e&&!S.canAdmin)return;
-  D={isNew:!e,data:JSON.parse(JSON.stringify(e||{num:"",nombre:"",email:"",turno:$("#l-turno").value||cfg().turnos[0]||"",posicion:"",puesto:"",area:"",supervisor:"",celular:"",certs:[],activo:true,notas:""}))};
+  D={isNew:!e,data:JSON.parse(JSON.stringify(e||{num:"",nombre:"",email:"",turno:$("#l-turno").value||cfg().turnos[0]||"",posicion:"",puesto:"",area:"",sitio:"",gerente:"",supervisor:"",celular:"",certs:[],activo:true,notas:""}))};
   renderDrawer();if(e)loadHistory(e);
 }
 function closeDrawer(){D=null;$("#drawer-root").innerHTML=""}
@@ -230,9 +238,12 @@ function renderDrawer(){
       <div class="field"><label for="f-pos">Posición</label><select id="f-pos" ${dis}>${opt(C.posiciones,d.posicion,"Sin posición")}</select></div>
       <div class="field"><label for="f-area">Área</label><select id="f-area" ${dis}>${opt(C.areas,d.area,"Sin asignar")}</select></div>
       <div class="field"><label for="f-puesto">Puesto (HR)</label><input id="f-puesto" type="text" value="${esc(d.puesto)}" ${dis}></div>
-      <div class="field"><label for="f-sup">Supervisor</label><input id="f-sup" type="text" value="${esc(d.supervisor)}" ${dis}></div>
+      <div class="field"><label for="f-sitio">Sitio</label><select id="f-sitio" ${dis}>${opt(C.sitios||[],d.sitio,"Sin sitio")}</select></div>
+      <div class="field"><label for="f-sup">Supervisor directo</label><input id="f-sup" type="text" list="dl-sup" value="${esc(d.supervisor)}" ${dis}><datalist id="dl-sup">${[...new Set(active().map(x=>x.supervisor).filter(Boolean))].sort().map(x=>`<option value="${esc(x)}">`).join("")}</datalist></div>
+      <div class="field"><label for="f-ger">Gerente</label><select id="f-ger" ${dis}>${opt(C.gerentes||[],d.gerente,"Sin gerente")}</select></div>
       <div class="field"><label for="f-activo">Estatus</label><select id="f-activo" ${dis}><option value="1" ${d.activo!==false?"selected":""}>Activo</option><option value="0" ${d.activo===false?"selected":""}>Baja</option></select></div>
     </div>
+    ${d.posicion&&((C.perfiles||{})[d.posicion]||{}).descripcion?`<div class="banner info" style="font-weight:400"><b>${esc(d.posicion)}:</b> ${esc(C.perfiles[d.posicion].descripcion)}</div>`:""}
     ${d.antiguedad||d.ingreso?`<div class="muted" style="font-size:13px">Antigüedad: ${esc(d.antiguedad)}${d.ingreso?" · Ingreso "+fmtD(d.ingreso):""}${d.tipo?" · "+esc(d.tipo):""}${d.clasif?" · "+esc(d.clasif):""}</div>`:""}
     <div class="panel" style="padding:12px">
       <h2 style="font-size:18px">Certificaciones</h2>
@@ -254,10 +265,10 @@ function readForm(){
   const d=D.data;
   d.num=$("#f-num").value.trim();d.nombre=$("#f-nombre").value.trim();d.celular=$("#f-cel").value.trim();d.email=$("#f-email").value.trim();
   d.turno=$("#f-turno").value;d.posicion=$("#f-pos").value;d.area=$("#f-area").value;d.puesto=$("#f-puesto").value.trim();
-  d.supervisor=$("#f-sup").value.trim();d.activo=$("#f-activo").value==="1";d.notas=$("#f-notas").value;
+  d.supervisor=$("#f-sup").value.trim();d.sitio=$("#f-sitio").value;d.gerente=$("#f-ger").value;d.activo=$("#f-activo").value==="1";d.notas=$("#f-notas").value;
   document.querySelectorAll("#f-certs .certrow").forEach(r=>{const c=d.certs[+r.dataset.ci];r.querySelectorAll("[data-cf]").forEach(i=>c[i.dataset.cf]=i.value)});
 }
-const EMP_COLS=["num","nombre","email","turno","posicion","area","puesto","supervisor","antiguedad","ingreso","tipo","clasif","celular","certs","activo","notas"];
+const EMP_COLS=["num","nombre","email","turno","posicion","area","sitio","gerente","puesto","supervisor","antiguedad","ingreso","tipo","clasif","celular","certs","activo","notas"];
 async function saveEmp(){
   readForm();const d=D.data;
   if(!d.num){toast("Escribe el número de empleado.");return}
@@ -281,33 +292,80 @@ async function loadHistory(e){
   el.innerHTML=`<div class="strip">${strip}</div><div style="margin-top:8px;display:flex;gap:6px;flex-wrap:wrap">${Object.keys(ST).filter(k=>cnt[k]).map(k=>`<span class="chip ${PRESENT.has(k)?"ok":"bad"}">${ST[k]}: ${cnt[k]}</span>`).join("")||"Sin registros en este periodo."}</div>`;
 }
 
-/* ---------- certifications ---------- */
-function renderCerts(){
+/* ---------- catálogos (menú lateral) ---------- */
+const CATS=[
+  {id:"perfiles",label:"Perfiles",key:"posiciones",field:"posicion",group:"Puestos"},
+  {id:"certificaciones",label:"Certificaciones",key:"certs",group:"Puestos"},
+  {id:"areas",label:"Áreas",key:"areas",field:"area",group:"Organización",one:"área",help:"Procesos o zonas donde trabaja cada persona. Se usan en la cobertura por área."},
+  {id:"sitios",label:"Sitios",key:"sitios",field:"sitio",group:"Organización",one:"sitio",help:"Edificio o planta a la que pertenece cada persona."},
+  {id:"gerentes",label:"Gerentes",key:"gerentes",field:"gerente",group:"Organización",one:"gerente",help:"Gerente al que reporta cada persona. Debajo de cada uno se ven los supervisores de su equipo."},
+  {id:"turnos",label:"Turnos",key:"turnos",field:"turno",group:"Organización",one:"turno",help:"Turnos de trabajo. Cada turno es una columna de la matriz de cobertura."},
+  {id:"usuarios",label:"Usuarios",group:"Acceso",admin:true}
+];
+const countBy=(f,v)=>active().filter(e=>e[f]===v).length;
+function renderCatalogos(){
+  const C=cfg();
+  const cats=CATS.filter(c=>!c.admin||S.canAdmin);
+  if(!cats.some(c=>c.id===S.cat))S.cat="perfiles";
+  let nav="",g="";
+  cats.forEach(c=>{if(c.group!==g){g=c.group;nav+=`<div class="cat-h">${esc(g)}</div>`}
+    const n=c.key?(C[c.key]||[]).length:(S.users.length||"");
+    nav+=`<button data-cat="${c.id}" aria-current="${S.cat===c.id}">${esc(c.label)}<span class="n">${n}</span></button>`});
+  $("#cat-nav").innerHTML=nav;
+  const c=cats.find(x=>x.id===S.cat);
+  const body=$("#cat-body");
+  if(c.id==="perfiles")body.innerHTML=catPerfiles();
+  else if(c.id==="certificaciones")body.innerHTML=catCerts();
+  else if(c.id==="usuarios")body.innerHTML=catUsuarios();
+  else body.innerHTML=catLista(c);
+}
+function addRow(key,ph){return S.canAdmin?`<div class="toolbar"><input type="text" id="cat-new" class="grow" placeholder="${esc(ph)}" aria-label="${esc(ph)}"><button class="btn primary" data-add="${key}">Agregar</button></div>`:""}
+function delBtn(key,v){return S.canAdmin?`<button class="btn danger" data-ldel="${key}" data-v="${esc(v)}">Quitar</button>`:""}
+function catPerfiles(){
+  const C=cfg(),P=C.perfiles||{},T=turnosUsed(),dis=S.canAdmin?"":"disabled";
+  return `<div class="cathead"><h2>Perfiles</h2><p>Qué hace cada posición, a qué puesto de HR corresponde y qué certificaciones necesita. La descripción aparece en la ficha de cada persona.</p></div>
+  ${addRow("posiciones","Nueva posición")}
+  <div class="perfiles">${C.posiciones.map(p=>{const d=P[p]||{};const ppl=active().filter(e=>e.posicion===p);
+    const porT=T.map(t=>[t,ppl.filter(e=>e.turno===t).length]).filter(x=>x[1]);
+    return `<div class="panel perfil"><h3>${esc(p)} <span class="chip">${ppl.length} personas</span>${porT.map(([t,n])=>`<span class="chip acc">${esc(t)}: ${n}</span>`).join("")}</h3>
+      ${S.canAdmin?`<div class="field"><label for="pf-hr-${esc(p)}">Puesto en HR</label><input id="pf-hr-${esc(p)}" type="text" data-perf="${esc(p)}" data-pf="puestoHR" value="${esc(d.puestoHR||"")}" placeholder="Ej. Material Handler"></div>
+      <div class="field"><label for="pf-ds-${esc(p)}">Qué hace</label><textarea id="pf-ds-${esc(p)}" data-perf="${esc(p)}" data-pf="descripcion" rows="3" placeholder="Responsabilidades principales">${esc(d.descripcion||"")}</textarea></div>`
+      :`${d.puestoHR?`<div class="muted" style="font-size:13px">Puesto en HR: ${esc(d.puestoHR)}</div>`:""}<p class="desc">${d.descripcion?esc(d.descripcion):'<span class="muted">Sin descripción.</span>'}</p>`}
+      <div class="field"><label>Certificaciones requeridas</label><div style="display:flex;gap:6px 12px;flex-wrap:wrap">${C.certs.map(n=>`<label class="ck"><input type="checkbox" data-creq="${esc(p)}" value="${esc(n)}" ${((C.certReq||{})[p]||[]).includes(n)?"checked":""} ${dis}> ${esc(n)}</label>`).join("")||'<span class="muted">Agrega certificaciones en su catálogo.</span>'}</div></div>
+      ${S.canAdmin?`<div>${delBtn("posiciones",p)}</div>`:""}
+    </div>`}).join("")||'<div class="empty">Sin posiciones.</div>'}</div>`;
+}
+function catLista(c){
+  const C=cfg(),arr=C[c.key]||[];
+  const extra=c.id==="gerentes";
+  const orphan=[...new Set(active().map(e=>e[c.field]).filter(v=>v&&!arr.includes(v)))];
+  return `<div class="cathead"><h2>${esc(c.label)}</h2><p>${esc(c.help)}</p></div>
+  ${addRow(c.key,"Nuevo "+c.one)}
+  <div class="panel" style="padding:0"><div class="scroll"><table><thead><tr><th>${esc(c.label.slice(0,-1)==="Área"?"Área":c.one[0].toUpperCase()+c.one.slice(1))}</th><th class="num">Personas</th>${extra?"<th>Supervisores en su equipo</th>":""}<th></th></tr></thead><tbody>${
+    arr.map(v=>{const n=countBy(c.field,v);
+      const sups=extra?[...new Set(active().filter(e=>e.gerente===v).map(e=>e.supervisor).filter(Boolean))].sort():[];
+      return `<tr><td>${esc(c.id==="sitios"?sitioCorto(v):v)}${c.id==="sitios"&&sitioCorto(v)!==v?`<div class="muted" style="font-size:12px">${esc(v)}</div>`:""}</td><td class="num">${n||'<span class="muted">0</span>'}</td>${extra?`<td style="font-size:13.5px">${sups.map(esc).join(", ")||'<span class="muted">—</span>'}</td>`:""}<td style="text-align:right">${delBtn(c.key,v)}</td></tr>`}).join("")||`<tr><td colspan="4" class="empty">Vacío.</td></tr>`
+  }</tbody></table></div></div>
+  ${orphan.length?`<div class="banner">Hay personas con ${esc(c.one)} que no está en el catálogo: ${orphan.map(esc).join(", ")}. ${S.canAdmin?"Agrégalo arriba o corrige sus fichas.":""}</div>`:""}`;
+}
+function catCerts(){
   const C=cfg(),on=S.date,soon30=addDays(on,30),soon60=addDays(on,60),A=active(),dis=S.canAdmin?"":"disabled";
-  $("#c-add").disabled=!S.canAdmin;$("#c-new").disabled=!S.canAdmin;
-  $("#c-cat").innerHTML=C.certs.length?`<table><thead><tr><th>Certificación</th><th class="num">Vig.</th><th class="num">Por vencer</th><th class="num">Vencidas</th><th></th></tr></thead><tbody>${
-    C.certs.map(n=>{let v=0,p=0,x=0;A.forEach(e=>(e.certs||[]).forEach(c=>{if(c.nombre!==n)return;if(!certValid(c,on))x++;else if(c.vence&&c.vence<=soon30)p++;else v++}));
-      return `<tr><td>${esc(n)}</td><td class="num">${v}</td><td class="num" style="color:${p?"var(--warn)":"inherit"}">${p}</td><td class="num" style="color:${x?"var(--bad)":"inherit"}">${x}</td><td><button class="btn danger" data-certdel="${esc(n)}" ${dis}>Quitar</button></td></tr>`}).join("")}</tbody></table>`:`<div class="empty">Sin certificaciones en el catálogo.</div>`;
-  const req=C.certReq||{};
-  $("#c-req").innerHTML=C.posiciones.map(p=>`<div style="padding:8px 0;border-bottom:1px solid var(--line)"><b>${esc(p)}</b><div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:4px">${
-    C.certs.map(n=>`<label style="display:flex;gap:5px;align-items:center;font-size:13.5px"><input type="checkbox" data-creq="${esc(p)}" value="${esc(n)}" ${(req[p]||[]).includes(n)?"checked":""} ${dis}> ${esc(n)}</label>`).join("")}</div></div>`).join("");
   const exp=[];A.forEach(e=>(e.certs||[]).forEach(c=>{if(c.vence&&c.vence<=soon60)exp.push({e,c})}));
   exp.sort((a,b)=>a.c.vence.localeCompare(b.c.vence));
-  $("#c-exp").innerHTML=exp.length?`<table><thead><tr><th>Persona</th><th>Certificación</th><th>Vence</th><th>Turno</th><th>Celular</th></tr></thead><tbody>${exp.map(({e,c})=>`<tr class="click" data-emp="${esc(e.num)}"><td>${esc(e.nombre)}</td><td>${esc(c.nombre)}${c.folio?` <span class="mono muted">${esc(c.folio)}</span>`:""}</td><td><span class="chip ${c.vence<on?"bad":"warn"}">${c.vence<on?"Vencida ":""}${fmtD(c.vence)}</span></td><td>${esc(e.turno)}</td><td class="tel">${esc(e.celular||"—")}</td></tr>`).join("")}</tbody></table>`:`<div class="empty">Nada vence en los próximos 60 días.</div>`;
   const miss=A.map(e=>({e,m:missingCerts(e,on)})).filter(x=>x.m.length);
-  $("#c-miss").innerHTML=miss.length?`<table><thead><tr><th>Persona</th><th>Posición</th><th>Le falta</th><th>Turno</th></tr></thead><tbody>${miss.map(({e,m})=>`<tr class="click" data-emp="${esc(e.num)}"><td>${esc(e.nombre)}</td><td>${esc(e.posicion)}</td><td>${m.map(n=>`<span class="chip warn">${esc(n)}</span>`).join(" ")}</td><td>${esc(e.turno)}</td></tr>`).join("")}</tbody></table>`:`<div class="empty">Todos tienen las certificaciones que pide su posición.</div>`;
+  const reqBy=n=>Object.keys(C.certReq||{}).filter(p=>(C.certReq[p]||[]).includes(n));
+  return `<div class="cathead"><h2>Certificaciones</h2><p>Tipos de certificación, cuántas hay vigentes y qué vence pronto. Las requeridas por posición se marcan en Perfiles.</p></div>
+  ${addRow("certs","Nueva certificación")}
+  <div class="panel" style="padding:0"><div class="scroll"><table><thead><tr><th>Certificación</th><th>Requerida para</th><th class="num">Vigentes</th><th class="num">Por vencer</th><th class="num">Vencidas</th><th></th></tr></thead><tbody>${
+    C.certs.map(n=>{let v=0,p=0,x=0;A.forEach(e=>(e.certs||[]).forEach(c=>{if(c.nombre!==n)return;if(!certValid(c,on))x++;else if(c.vence&&c.vence<=soon30)p++;else v++}));
+      return `<tr><td>${esc(n)}</td><td>${reqBy(n).map(p=>`<span class="chip">${esc(p)}</span>`).join(" ")||'<span class="muted">—</span>'}</td><td class="num">${v}</td><td class="num" style="color:${p?"var(--warn)":"inherit"}">${p}</td><td class="num" style="color:${x?"var(--bad)":"inherit"}">${x}</td><td style="text-align:right">${S.canAdmin?`<button class="btn danger" data-certdel="${esc(n)}">Quitar</button>`:""}</td></tr>`}).join("")||'<tr><td colspan="6" class="empty">Sin certificaciones.</td></tr>'
+  }</tbody></table></div></div>
+  <div class="panel"><h2>Vencimientos <span class="sub">vencidas y próximos 60 días</span></h2><div class="scroll">${exp.length?`<table><thead><tr><th>Persona</th><th>Certificación</th><th>Vence</th><th>Turno</th><th>Celular</th></tr></thead><tbody>${exp.map(({e,c})=>`<tr class="click" data-emp="${esc(e.num)}"><td>${esc(e.nombre)}</td><td>${esc(c.nombre)}${c.folio?` <span class="mono muted">${esc(c.folio)}</span>`:""}</td><td><span class="chip ${c.vence<on?"bad":"warn"}">${c.vence<on?"Vencida ":""}${fmtD(c.vence)}</span></td><td>${esc(e.turno)}</td><td class="tel">${esc(e.celular||"—")}</td></tr>`).join("")}</tbody></table>`:`<div class="empty">Nada vence en los próximos 60 días.</div>`}</div></div>
+  <div class="panel"><h2>Sin la certificación que pide su posición</h2><div class="scroll">${miss.length?`<table><thead><tr><th>Persona</th><th>Posición</th><th>Le falta</th><th>Turno</th></tr></thead><tbody>${miss.map(({e,m})=>`<tr class="click" data-emp="${esc(e.num)}"><td>${esc(e.nombre)}</td><td>${esc(e.posicion)}</td><td>${m.map(n=>`<span class="chip warn">${esc(n)}</span>`).join(" ")}</td><td>${esc(e.turno)}</td></tr>`).join("")}</tbody></table>`:`<div class="empty">Todos tienen las certificaciones que pide su posición.</div>`}</div></div>`;
 }
-
-/* ---------- ajustes ---------- */
-function renderAjustes(){
-  const C=cfg(),dis=S.canAdmin?"":"disabled";
-  const li=(k,arr)=>arr.map(n=>`<span class="chip">${esc(n)}<button data-ldel="${k}" data-v="${esc(n)}" aria-label="Quitar ${esc(n)}" ${dis}>×</button></span>`).join("")||'<span class="muted">Vacío</span>';
-  $("#a-areas").innerHTML=li("areas",C.areas);$("#a-pos").innerHTML=li("posiciones",C.posiciones);$("#a-turnos").innerHTML=li("turnos",C.turnos);
-  document.querySelectorAll("#v-ajustes [data-add], #v-ajustes input[type=text]").forEach(x=>x.disabled=!S.canAdmin);
-  $("#a-users-panel").hidden=!S.canAdmin;
-  if(S.canAdmin){
-    $("#a-users").innerHTML=S.users.length?`<table><thead><tr><th>Correo</th><th>Rol</th></tr></thead><tbody>${S.users.map(u=>`<tr><td>${esc(u.email)}${u.id===S.session.user.id?' <span class="chip">tú</span>':""}</td><td><select data-urol="${esc(u.id)}" aria-label="Rol de ${esc(u.email)}" ${u.id===S.session.user.id?"disabled":""}>${["admin","supervisor","lector"].map(r=>`<option ${u.rol===r?"selected":""}>${r}</option>`).join("")}</select></td></tr>`).join("")}</tbody></table>`:`<div class="empty">Cargando usuarios…</div>`;
-  }
+function catUsuarios(){
+  return `<div class="cathead"><h2>Usuarios</h2><p>admin: todo · supervisor: pasa lista · lector: solo consulta.</p></div>
+  <div class="panel" style="padding:0"><div class="scroll">${S.users.length?`<table><thead><tr><th>Correo</th><th>Rol</th></tr></thead><tbody>${S.users.map(u=>`<tr><td>${esc(u.email)}${u.id===S.session.user.id?' <span class="chip">tú</span>':""}</td><td><select data-urol="${esc(u.id)}" aria-label="Rol de ${esc(u.email)}" ${u.id===S.session.user.id?"disabled":""}>${["admin","supervisor","lector"].map(r=>`<option ${u.rol===r?"selected":""}>${r}</option>`).join("")}</select></td></tr>`).join("")}</tbody></table>`:`<div class="empty">Cargando usuarios…</div>`}</div></div>`;
 }
 function deepMerge(a,b){const o=Array.isArray(a)?a.slice():Object.assign({},a);Object.keys(b).forEach(k=>{const v=b[k];if(v&&typeof v==="object"&&!Array.isArray(v)&&o[k]&&typeof o[k]==="object"&&!Array.isArray(o[k]))o[k]=deepMerge(o[k],v);else if(v===null)delete o[k];else o[k]=v});return o}
 let cfgChain=Promise.resolve();
@@ -322,9 +380,10 @@ function cfgUpdate(patch){
 /* ---------- routing / render ---------- */
 function renderActive(){
   if(!S.session)return;
-  if(S.tab==="cobertura")renderCobertura();else if(S.tab==="lista")renderLista();else if(S.tab==="personal")renderPersonal();else if(S.tab==="certificaciones")renderCerts();else renderAjustes();
+  if(S.tab==="cobertura")renderCobertura();else if(S.tab==="lista")renderLista();else if(S.tab==="personal")renderPersonal();else renderCatalogos();
 }
 function setTab(t){
+  if(t==="certificaciones"){S.cat="certificaciones";t="catalogos"}else if(t==="ajustes")t="catalogos";
   if(!VIEWS.includes(t))t="cobertura";
   S.tab=t;
   document.querySelectorAll("section.view").forEach(s=>s.hidden=!S.session||s.id!=="v-"+t);
@@ -345,16 +404,17 @@ $("#cov-dim").addEventListener("click",e=>{const b=e.target.closest("button");if
   [...$("#cov-dim").children].forEach(x=>x.setAttribute("aria-pressed",x===b));renderCobertura()});
 [...$("#cov-dim").children].forEach(x=>x.setAttribute("aria-pressed",x.dataset.v===S.dim));
 $("#cov-turno").addEventListener("change",renderCobertura);
+$("#cov-sitio").addEventListener("change",()=>{S.sel=null;renderCobertura()});
 $("#cov-edit").addEventListener("click",()=>{S.editReq=!S.editReq;$("#cov-edit").textContent=S.editReq?"Listo":"Editar requeridos";$("#cov-edit").classList.toggle("primary",S.editReq);renderCobertura()});
 $("#cov-matrix").addEventListener("click",e=>{const b=e.target.closest("[data-cell]");if(!b)return;S.sel=S.sel===b.dataset.cell?null:b.dataset.cell;renderCobertura();if(S.sel)$("#cov-detail").scrollIntoView({block:"nearest",behavior:"smooth"})});
 $("#cov-matrix").addEventListener("change",e=>{const i=e.target.closest("[data-req]");if(!i)return;
   const v=i.value===""?null:Math.max(0,parseInt(i.value,10)||0);cfgUpdate({req:{[S.dim]:{[i.dataset.req]:v}}})});
-["#l-turno","#l-pos","#l-area"].forEach(s=>$(s).addEventListener("change",renderLista));
+["#l-turno","#l-pos","#l-area","#l-sitio"].forEach(s=>$(s).addEventListener("change",renderLista));
 $("#l-q").addEventListener("input",renderLista);
 $("#l-list").addEventListener("click",e=>{const b=e.target.closest("[data-mark]");if(b&&S.canMark)mark(b.dataset.emp,b.dataset.mark)});
 $("#l-all").addEventListener("click",markAll);
 $("#p-q").addEventListener("input",renderPersonal);
-["#p-turno","#p-pos","#p-area","#p-bajas"].forEach(s=>$(s).addEventListener("change",renderPersonal));
+["#p-turno","#p-pos","#p-area","#p-sitio","#p-ger","#p-bajas"].forEach(s=>$(s).addEventListener("change",renderPersonal));
 $("#p-new").addEventListener("click",()=>openEmp(null));
 document.addEventListener("click",e=>{const r=e.target.closest("tr[data-emp]");if(r&&!e.target.closest("button,select,input"))openEmp(r.dataset.emp)});
 $("#drawer-root").addEventListener("click",e=>{
@@ -364,23 +424,33 @@ $("#drawer-root").addEventListener("click",e=>{
   if(e.target.id==="f-save")saveEmp();
 });
 document.addEventListener("keydown",e=>{if(e.key==="Escape"&&D)closeDrawer()});
-$("#c-add").addEventListener("click",()=>{const v=$("#c-new").value.trim();if(!v)return;const C=cfg();if(C.certs.includes(v)){toast("Ya existe");return}cfgUpdate({certs:C.certs.concat([v])});$("#c-new").value=""});
-$("#v-certificaciones").addEventListener("click",e=>{const b=e.target.closest("[data-certdel]");if(!b)return;
-  if(b.dataset.confirm!=="1"){b.dataset.confirm="1";b.textContent="¿Seguro?";setTimeout(()=>{if(b.isConnected){b.dataset.confirm="";b.textContent="Quitar"}},3000);return}
-  const n=b.dataset.certdel;const C=cfg();const req={};Object.keys(C.certReq||{}).forEach(p=>req[p]=(C.certReq[p]||[]).filter(x=>x!==n));
-  cfgUpdate({certs:C.certs.filter(x=>x!==n),certReq:req})});
-$("#v-certificaciones").addEventListener("change",e=>{const c=e.target.closest("[data-creq]");if(!c)return;const p=c.dataset.creq;
-  const vals=[...document.querySelectorAll("[data-creq]")].filter(x=>x.dataset.creq===p&&x.checked).map(x=>x.value);cfgUpdate({certReq:{[p]:vals}})});
-$("#v-ajustes").addEventListener("click",e=>{
+const CV=$("#v-catalogos");
+CV.addEventListener("click",e=>{
+  const n=e.target.closest("[data-cat]");
+  if(n){S.cat=n.dataset.cat;try{localStorage.setItem("cp_cat",S.cat)}catch(_){}renderCatalogos();return}
   const a=e.target.closest("[data-add]");
-  if(a){const k=a.dataset.add;const inp={areas:"#a-area-new",posiciones:"#a-pos-new",turnos:"#a-turno-new"}[k];const v=$(inp).value.trim();if(!v)return;
-    const arr=cfg()[k]||[];if(arr.includes(v)){toast("Ya existe");return}cfgUpdate({[k]:arr.concat([v])});$(inp).value="";return}
-  const d=e.target.closest("[data-ldel]");
-  if(d){const k=d.dataset.ldel;cfgUpdate({[k]:(cfg()[k]||[]).filter(x=>x!==d.dataset.v)})}
+  if(a){const k=a.dataset.add;const v=$("#cat-new").value.trim();if(!v)return;
+    const arr=cfg()[k]||[];if(arr.includes(v)){toast("Ya existe");return}cfgUpdate({[k]:arr.concat([v])});return}
+  const d=e.target.closest("[data-ldel],[data-certdel]");
+  if(d){
+    if(d.dataset.confirm!=="1"){d.dataset.confirm="1";d.textContent="¿Seguro?";setTimeout(()=>{if(d.isConnected){d.dataset.confirm="";d.textContent="Quitar"}},3000);return}
+    const C=cfg();
+    if(d.dataset.certdel!==undefined){const n=d.dataset.certdel;const req={};Object.keys(C.certReq||{}).forEach(p=>req[p]=(C.certReq[p]||[]).filter(x=>x!==n));cfgUpdate({certs:C.certs.filter(x=>x!==n),certReq:req});return}
+    const k=d.dataset.ldel,v=d.dataset.v;const patch={[k]:(C[k]||[]).filter(x=>x!==v)};
+    if(k==="posiciones"){patch.perfiles={[v]:null};patch.certReq={[v]:null}}
+    cfgUpdate(patch);
+  }
 });
-$("#v-ajustes").addEventListener("change",async e=>{const s=e.target.closest("[data-urol]");if(!s)return;
-  const {error}=await S.sb.from("perfiles").update({rol:s.value}).eq("id",s.dataset.urol);
-  if(error)toast(errMsg(error));else{const u=S.users.find(x=>x.id===s.dataset.urol);if(u)u.rol=s.value;toast("Rol actualizado")}});
+CV.addEventListener("keydown",e=>{if(e.key==="Enter"&&e.target.id==="cat-new"){const b=CV.querySelector("[data-add]");if(b)b.click()}});
+CV.addEventListener("change",async e=>{
+  const c=e.target.closest("[data-creq]");
+  if(c){const p=c.dataset.creq;const vals=[...CV.querySelectorAll("[data-creq]")].filter(x=>x.dataset.creq===p&&x.checked).map(x=>x.value);cfgUpdate({certReq:{[p]:vals}});return}
+  const f=e.target.closest("[data-perf]");
+  if(f){cfgUpdate({perfiles:{[f.dataset.perf]:{[f.dataset.pf]:f.value.trim()}}});toast("Perfil guardado");return}
+  const s=e.target.closest("[data-urol]");
+  if(s){const {error}=await S.sb.from("perfiles").update({rol:s.value}).eq("id",s.dataset.urol);
+    if(error)toast(errMsg(error));else{const u=S.users.find(x=>x.id===s.dataset.urol);if(u)u.rol=s.value;toast("Rol actualizado")}}
+});
 
 /* ---------- auth ---------- */
 $("#login-form").addEventListener("submit",async e=>{
