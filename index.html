@@ -6,6 +6,7 @@
 <meta name="robots" content="noindex,nofollow">
 <link rel="icon" type="image/png" href="img/logo.png">
 <title>Control de Personal - METALES</title>
+<script>try{document.documentElement.setAttribute("data-theme",localStorage.getItem("cp_tema")==="dark"?"dark":"light")}catch(e){document.documentElement.setAttribute("data-theme","light")}</script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
 <style>
@@ -57,16 +58,26 @@ nav.tabs button:hover{opacity:1;background:#ffffff0a}
 .side .who .acts{display:flex;gap:6px;flex-wrap:wrap}
 .side .who button{display:inline-flex;align-items:center;gap:6px;background:transparent;color:var(--bar-ink);border:1px solid #ffffff40;border-radius:4px;padding:4px 10px;cursor:pointer;font-size:12.5px}
 .side .who button svg{width:14px;height:14px}
+/* Barra dinámica: angosta (íconos) y se expande al pasar el cursor o al navegar con teclado */
 @media (min-width:801px){
-  .shell.collapsed .side{flex-basis:68px}
-  .shell.collapsed .side .brand{padding:0;justify-content:center}
-  .shell.collapsed .brand-t,.shell.collapsed nav.tabs .t,.shell.collapsed .side .who .nm,.shell.collapsed .side .who .role,.shell.collapsed .side .who .t{display:none}
-  .shell.collapsed .side-toggle svg{transform:rotate(180deg)}
-  .shell.collapsed nav.tabs button{justify-content:center;padding:12px 4px 12px 0}
-  .shell.collapsed .tab-n{position:absolute;top:4px;right:8px;padding:0 5px;font-size:10px}
-  .shell.collapsed .side .who{padding:14px 0 0;justify-items:center}.shell.collapsed .side .who .acts{flex-direction:column}
+  .shell{display:block;padding-left:68px}
+  .side{position:fixed;left:0;top:0;bottom:0;width:68px;overflow-x:hidden;transition:width .18s ease,box-shadow .18s ease}
+  .side:hover,.side:has(:focus-visible){width:236px;box-shadow:6px 0 24px #0005}
+  .side .brand{padding:0 12px 0 17px;min-height:34px}
+  .side .brand-t{min-width:200px}
+  .side nav.tabs button{padding:10px 18px 10px 20px;white-space:nowrap}
+  .side .t,.side .brand .tag,.side .who .nm,.side .who .role{white-space:nowrap;transition:opacity .12s}
+  .side .brand h1{transition:opacity .12s}
+  .side:not(:hover):not(:has(:focus-visible)) .who button .t{display:none}
+  .side:not(:hover):not(:has(:focus-visible)) .who button{padding:6px 9px}
+  .side:not(:hover):not(:has(:focus-visible)) .brand h1,.side:not(:hover):not(:has(:focus-visible)) .brand .tag,
+  .side:not(:hover):not(:has(:focus-visible)) .t,.side:not(:hover):not(:has(:focus-visible)) .who .nm,.side:not(:hover):not(:has(:focus-visible)) .who .role{opacity:0;pointer-events:none}
+  .side:not(:hover):not(:has(:focus-visible)) .tab-n{position:absolute;top:4px;left:38px;padding:0 5px;font-size:10px}
+  .side .who{padding:14px 12px 0 14px}
+  .side .who .acts{flex-direction:column;align-items:flex-start}
+  .side .who button{white-space:nowrap}
 }
-@media (prefers-reduced-motion:no-preference){.side{transition:flex-basis .18s ease}.side-toggle svg{transition:transform .18s ease}}
+@media (prefers-reduced-motion:reduce){.side{transition:none}}
 .shell>main{flex:1;min-width:0}
 @media (max-width:800px){
   .shell{display:block}
@@ -261,7 +272,7 @@ tr.click{cursor:pointer} tr.click:hover td{background:var(--surface2)}
 <div class="shell" id="shell">
 <aside class="side" id="side" hidden>
   <div class="brand"><div class="brand-t"><img class="logo" src="img/logo.png" alt="" onerror="this.remove()"><h1>Control de Personal</h1><span class="tag">METALES · Materiales<br>Guadalajara North</span></div>
-    <button class="side-toggle" id="side-toggle" aria-expanded="true" aria-label="Contraer menú" title="Contraer menú"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 6l-6 6 6 6"/></svg></button></div>
+</div>
   <nav class="tabs" id="tabs" aria-label="Menú"></nav>
   <div class="who" id="who"></div>
 </aside>
@@ -321,6 +332,7 @@ tr.click{cursor:pointer} tr.click:hover td{background:var(--surface2)}
       <select id="p-sitio" aria-label="Sitio"></select>
       <select id="p-ger" aria-label="Gerente"></select>
       <select id="p-sup" aria-label="Supervisor"></select>
+      <select id="p-cargo" aria-label="Cargo"></select>
       <label class="muted" style="display:flex;gap:5px;align-items:center"><input type="checkbox" id="p-bajas"> Incluir bajas</label>
       <button class="btn primary" id="p-new">Agregar persona</button>
     </div>

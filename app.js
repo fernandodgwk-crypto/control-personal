@@ -91,9 +91,17 @@ function refreshSelects(){
   const sit=listUsed("sitios","sitio");
   ["#cov-sitio","#l-sitio","#p-sitio"].forEach(id=>fillSelect($(id),sit,"Todos los sitios",sitioCorto));
   fillSelect($("#p-ger"),listUsed("gerentes","gerente"),"Todos los gerentes");
-  const sups=supsUsed();["#l-sup","#p-sup"].forEach(id=>fillSelect($(id),sups,"Todos los supervisores"));
+  const sups=supsUsed();fillSelect($("#p-sup"),sups,"Todos los supervisores");
+  const ls=verTodos()?sups:mySups();fillSelect($("#l-sup"),ls,ls.length>1||verTodos()?"Todos mis equipos":null);$("#l-sup").hidden=!verTodos()&&ls.length<2;
+  if(verTodos())$("#l-sup").options[0].text="Todos los supervisores";
+  fillSelect($("#p-cargo"),["Supervisores","Gerentes","Operativos"],"Todos los cargos");
+  fillSelect($("#l-area"),cfg().areas,"Todas las áreas",areaLbl);fillSelect($("#p-area"),cfg().areas,"Todas las áreas",areaLbl);
 }
 function supsUsed(){const c=S.sups.filter(x=>x.activo!==false).map(x=>x.nombre);active().forEach(e=>{if(e.supervisor&&!c.includes(e.supervisor))c.push(e.supervisor)});return c.sort((a,b)=>a.localeCompare(b))}
+const isSupName=n=>S.sups.some(x=>x.nombre===n&&x.activo!==false);
+const isGerName=n=>(cfg().gerentes||[]).includes(n);
+const verTodos=()=>S.isAdmin||S.perms.has("gestionar_movimientos");
+const areaLbl=a=>{const s=(cfg().areaSitio||{})[a];return s?`${a} · ${sitioCorto(s)}`:a};
 const myEmail=()=>((S.session&&S.session.user.email)||"").toLowerCase();
 const mySups=()=>S.sups.filter(x=>x.activo!==false&&x.email&&x.email.toLowerCase()===myEmail()).map(x=>x.nombre);
 function listUsed(k,f){const c=(cfg()[k]||[]).slice();active().forEach(e=>{if(e[f]&&!c.includes(e[f]))c.push(e[f])});return c}
@@ -102,7 +110,8 @@ const covBase=()=>{const st=$("#cov-sitio").value;return active().filter(e=>!st|
 /* ---------- coverage ---------- */
 function coverage(){
   const C=cfg(),dim=S.dim,T=turnosUsed(),on=S.date;
-  const keys=dim==="area"?C.areas.slice():C.posiciones.slice();
+  const stF=$("#cov-sitio").value,AS=C.areaSitio||{};
+  const keys=dim==="area"?C.areas.filter(a=>!stF||!AS[a]||AS[a]===stF):C.posiciones.slice();
   const cells={};
   const get=(k,t)=>{const id=k+"__"+t;return cells[id]||(cells[id]={k,t,plant:[],pres:[],aus:[],pend:[],sinCert:[]})};
   covBase().forEach(e=>{
@@ -202,10 +211,13 @@ function renderCellDetail(){
 /* ---------- roll call ---------- */
 function rollPeople(){
   const t=$("#l-turno").value,p=$("#l-pos").value,a=$("#l-area").value,st=$("#l-sitio").value,sp=$("#l-sup").value,q=$("#l-q").value.trim().toLowerCase();
-  return active().filter(e=>e.turno===t&&(!p||e.posicion===p)&&(!a||e.area===a)&&(!st||e.sitio===st)&&(!sp||e.supervisor===sp)&&(!q||e.nombre.toLowerCase().includes(q)||String(e.num).includes(q)))
+  const my=mySups(),todos=verTodos();
+  return active().filter(e=>(todos||my.includes(e.supervisor))&&e.turno===t&&(!p||e.posicion===p)&&(!a||e.area===a)&&(!st||e.sitio===st)&&(!sp||e.supervisor===sp)&&(!q||e.nombre.toLowerCase().includes(q)||String(e.num).includes(q)))
     .sort((x,y)=>(x.posicion||"").localeCompare(y.posicion||"")||x.nombre.localeCompare(y.nombre));
 }
 function renderLista(){
+  if(S.session&&!verTodos()&&!mySups().length){$("#l-sum").innerHTML="";$("#l-all").disabled=true;
+    $("#l-list").innerHTML=`<div class="empty">Tu cuenta no está ligada a ningún supervisor, así que no tienes personal en tu pase de lista.<br>Pide al administrador que ponga tu correo en Catálogos → Supervisores.</div>`;return}
   const ppl=rollPeople();const cnt={};let pend=0;
   ppl.forEach(e=>{const s=markOf(e);if(s)cnt[s]=(cnt[s]||0)+1;else pend++});
   $("#l-sum").innerHTML=`<span class="chip">${ppl.length} personas</span>`+Object.keys(ST).filter(k=>cnt[k]).map(k=>`<span class="chip ${PRESENT.has(k)?"ok":"bad"}">${ST[k]}: ${cnt[k]}</span>`).join("")+(pend?`<span class="chip warn">Sin registrar: ${pend}</span>`:`<span class="chip ok">Lista completa</span>`);
@@ -238,15 +250,16 @@ async function markAll(){
 /* ---------- personal ---------- */
 function renderPersonal(){
   $("#p-new").hidden=!S.canPersonal;
-  const q=$("#p-q").value.trim().toLowerCase(),t=$("#p-turno").value,p=$("#p-pos").value,a=$("#p-area").value,st=$("#p-sitio").value,g=$("#p-ger").value,sp=$("#p-sup").value,b=$("#p-bajas").checked;
-  const ppl=[...S.emps.values()].filter(e=>(b||e.activo!==false)&&(!t||e.turno===t)&&(!p||e.posicion===p)&&(!a||e.area===a)&&(!st||e.sitio===st)&&(!g||e.gerente===g)&&(!sp||e.supervisor===sp)&&
+  const q=$("#p-q").value.trim().toLowerCase(),t=$("#p-turno").value,p=$("#p-pos").value,a=$("#p-area").value,st=$("#p-sitio").value,g=$("#p-ger").value,sp=$("#p-sup").value,cg=$("#p-cargo").value,b=$("#p-bajas").checked;
+  const cargoOk=e=>!cg||(cg==="Supervisores"?isSupName(e.nombre):cg==="Gerentes"?isGerName(e.nombre):(!isSupName(e.nombre)&&!isGerName(e.nombre)));
+  const ppl=[...S.emps.values()].filter(e=>(b||e.activo!==false)&&(!t||e.turno===t)&&(!p||e.posicion===p)&&(!a||e.area===a)&&(!st||e.sitio===st)&&(!g||e.gerente===g)&&(!sp||e.supervisor===sp)&&cargoOk(e)&&
     (!q||e.nombre.toLowerCase().includes(q)||String(e.num).includes(q)||(e.celular||"").includes(q))).sort((x,y)=>x.nombre.localeCompare(y.nombre));
   if(!ppl.length){$("#p-table").innerHTML=`<div class="empty">${S.loaded?"Sin resultados.":"Cargando personal…"}</div>`;return}
   const soon=addDays(S.date,30);
   $("#p-table").innerHTML=`<table><thead><tr><th>Nombre</th><th>Turno</th><th>Posición</th><th>Área</th><th>Sitio</th><th>Reporta a</th><th>Celular</th><th>Certificaciones</th><th>Hoy</th></tr></thead><tbody>${
     ppl.map(e=>{const s=markOf(e);const miss=missingCerts(e,S.date);
       const certs=(e.certs||[]).map(c=>{const st=!certValid(c,S.date)?"bad":(c.vence&&c.vence<=soon?"warn":"ok");return `<span class="chip ${st}" title="${c.vence?"Vence "+fmtD(c.vence):"Sin vencimiento"}">${esc(c.nombre)}</span>`}).join(" ");
-      return `<tr class="click" data-emp="${esc(e.num)}"><td><b style="font-weight:600">${esc(e.nombre)}</b>${e.activo===false?' <span class="chip">Baja</span>':""}<div class="mono muted">${esc(e.num)} · ${esc(e.puesto||"")}</div></td>
+      return `<tr class="click" data-emp="${esc(e.num)}"><td><b style="font-weight:600">${esc(e.nombre)}</b>${e.activo===false?' <span class="chip">Baja</span>':""}${isGerName(e.nombre)?' <span class="chip info">Gerente</span>':""}${isSupName(e.nombre)?` <span class="chip acc">Supervisor · ${countBy("supervisor",e.nombre)}</span>`:""}<div class="mono muted">${esc(e.num)} · ${esc(e.puesto||"")}</div></td>
       <td>${esc(e.turno||"—")}</td><td>${esc(e.posicion||"—")}</td><td>${e.area?esc(e.area):'<span class="muted">Sin asignar</span>'}</td>
       <td>${esc(sitioCorto(e.sitio)||"—")}</td>
       <td style="font-size:13.5px">${e.supervisor?esc(e.supervisor):'<span class="muted">—</span>'}${e.gerente?`<div class="muted" style="font-size:12px">Gerente: ${esc(e.gerente)}</div>`:""}</td>
@@ -261,7 +274,7 @@ let D=null;
 function openEmp(num){
   const e=num?S.emps.get(num):null;
   if(!e&&!S.canPersonal)return;
-  D={isNew:!e,data:JSON.parse(JSON.stringify(e||{num:"",nombre:"",email:"",turno:$("#l-turno").value||cfg().turnos[0]||"",posicion:"",puesto:"",area:"",sitio:"",gerente:"",supervisor:"",celular:"",certs:[],activo:true,notas:""}))};
+  D={isNew:!e,orig:e?e.nombre:"",data:JSON.parse(JSON.stringify(e||{num:"",nombre:"",email:"",turno:$("#l-turno").value||cfg().turnos[0]||"",posicion:"",puesto:"",area:"",sitio:"",gerente:"",supervisor:"",celular:"",certs:[],activo:true,notas:""}))};
   renderDrawer();if(e)loadHistory(e);
 }
 function closeDrawer(){D=null;$("#drawer-root").innerHTML=""}
@@ -279,13 +292,14 @@ function renderDrawer(){
       <div class="field"><label for="f-email">Correo</label><input id="f-email" type="email" value="${esc(d.email)}" ${dis}></div>
       <div class="field"><label for="f-turno">Turno</label><select id="f-turno" ${dis}>${opt(turnosUsed(),d.turno)}</select></div>
       <div class="field"><label for="f-pos">Posición</label><select id="f-pos" ${dis}>${opt(C.posiciones,d.posicion,"Sin posición")}</select></div>
-      <div class="field"><label for="f-area">Área</label><select id="f-area" ${dis}>${opt(C.areas,d.area,"Sin asignar")}</select></div>
+      <div class="field"><label for="f-area">Área</label><select id="f-area" ${dis}>${(()=>{const l=C.areas.slice();if(d.area&&!l.includes(d.area))l.push(d.area);return '<option value="">Sin asignar</option>'+l.map(a=>`<option value="${esc(a)}" ${a===d.area?"selected":""}>${esc(areaLbl(a))}</option>`).join("")})()}</select></div>
       <div class="field"><label for="f-puesto">Puesto (HR)</label><input id="f-puesto" type="text" value="${esc(d.puesto)}" ${dis}></div>
       <div class="field"><label for="f-sitio">Sitio</label><select id="f-sitio" ${dis}>${opt(C.sitios||[],d.sitio,"Sin sitio")}</select></div>
       <div class="field"><label for="f-sup">Supervisor directo</label><select id="f-sup" ${D.isNew||gestiona()?dis:"disabled"} title="${D.isNew||gestiona()?"":"El supervisor se cambia con un movimiento aprobado"}">${opt(supsUsed(),d.supervisor,"Sin supervisor")}</select>${!D.isNew&&canRequestFor(d)?`<button type="button" class="btn" id="f-mov" style="margin-top:6px">Solicitar cambio de supervisor</button>`:""}${pendingFor(d.num)?`<span class="chip warn" style="margin-top:6px;align-self:flex-start">Movimiento pendiente</span>`:""}</div>
       <div class="field"><label for="f-ger">Gerente</label><select id="f-ger" ${dis}>${opt(C.gerentes||[],d.gerente,"Sin gerente")}</select></div>
       <div class="field"><label for="f-activo">Estatus</label><select id="f-activo" ${dis}><option value="1" ${d.activo!==false?"selected":""}>Activo</option><option value="0" ${d.activo===false?"selected":""}>Baja</option></select></div>
     </div>
+    ${cargoBlock(d)}
     ${d.posicion&&((C.perfiles||{})[d.posicion]||{}).descripcion?`<div class="banner info" style="font-weight:400"><b>${esc(d.posicion)}:</b> ${esc(C.perfiles[d.posicion].descripcion)}</div>`:""}
     ${d.antiguedad||d.ingreso?`<div class="muted" style="font-size:13px">Antigüedad: ${esc(d.antiguedad)}${d.ingreso?" · Ingreso "+fmtD(d.ingreso):""}${d.tipo?" · "+esc(d.tipo):""}${d.clasif?" · "+esc(d.clasif):""}</div>`:""}
     <div class="panel" style="padding:12px">
@@ -303,6 +317,19 @@ function renderDrawer(){
     ${D.isNew?"":`<div class="panel" style="padding:12px"><h2 style="font-size:18px">Últimos 30 días</h2><div id="f-hist" class="muted">Cargando…</div></div>`}
   </div>
   <footer><button class="btn" data-close>${ro?"Cerrar":"Cancelar"}</button>${ro?"":'<button class="btn primary" id="f-save">Guardar</button>'}</footer></aside>`;
+}
+function cargoBlock(d){
+  const ed=S.canCatalog,dis=ed?"":"disabled",sup=isSupName(D.orig||d.nombre),ger=isGerName(D.orig||d.nombre);
+  const acc=S.isAdmin&&d.email?S.users.find(u=>(u.email||"").toLowerCase()===d.email.trim().toLowerCase()):null;
+  return `<div class="panel" style="padding:12px;display:grid;gap:10px"><h2 style="font-size:18px;margin:0">Cargo y acceso</h2>
+    <div class="row" style="gap:18px">
+      <label class="ck" style="display:flex;gap:6px;align-items:center"><input type="checkbox" id="f-essup" ${sup?"checked":""} ${dis} style="width:auto"> Es supervisor${sup?` <span class="muted small">(${countBy("supervisor",D.orig||d.nombre)} personas)</span>`:""}</label>
+      <label class="ck" style="display:flex;gap:6px;align-items:center"><input type="checkbox" id="f-esger" ${ger?"checked":""} ${dis} style="width:auto"> Es gerente</label>
+    </div>
+    ${ed?`<div class="small muted">Como supervisor, su correo es el de la cuenta con la que aprueba movimientos. Su gerente será la persona a la que reporta.</div>`:""}
+    ${S.isAdmin?(acc?`<div class="field"><label for="f-rol">Rol en la app (${esc(acc.email)})</label><select id="f-rol" ${acc.id===S.session.user.id?"disabled":""}>${S.roles.map(r=>`<option value="${esc(r.nombre)}" ${acc.rol===r.nombre?"selected":""}>${esc(ROLE_LABEL(r.nombre))}</option>`).join("")}</select></div>`
+      :`<div class="small muted">${d.email?"Ese correo no tiene cuenta en la app. Créala en Supabase → Authentication → Users y aquí podrás asignarle rol.":"Sin correo: no se puede ligar a una cuenta de la app."}</div>`):""}
+  </div>`;
 }
 function readForm(){
   const d=D.data;
@@ -322,7 +349,29 @@ async function saveEmp(){
   $("#f-save").disabled=true;
   const {data,error}=await S.sb.from("empleados").upsert(row).select().single();
   if(error){toast(errMsg(error));$("#f-save").disabled=false;return}
-  S.emps.set(data.num,data);refreshSelects();renderActive();toast("Guardado");closeDrawer();
+  S.emps.set(data.num,data);
+  const essup=$("#f-essup"),esger=$("#f-esger"),frol=$("#f-rol");
+  try{await syncCargo(D.orig,data,essup&&!essup.disabled?essup.checked:null,esger&&!esger.disabled?esger.checked:null,frol&&!frol.disabled?frol.value:null)}catch(err){toast(err.message||String(err))}
+  refreshSelects();renderActive();toast("Guardado");closeDrawer();
+}
+async function syncCargo(orig,e,sup,ger,rol){
+  const nombre=e.nombre,email=(e.email||"").trim().toLowerCase();
+  // cambio de nombre de alguien que es supervisor o gerente: llevarlo a sus referencias
+  if(orig&&orig!==nombre&&S.canCatalog){
+    if(S.sups.some(x=>x.nombre===orig)){const {error}=await S.sb.rpc("renombrar_catalogo",{p_campo:"supervisor",p_viejo:orig,p_nuevo:nombre});if(error)throw error;await loadSups()}
+    if(isGerName(orig)){const {error}=await S.sb.rpc("renombrar_catalogo",{p_campo:"gerente",p_viejo:orig,p_nuevo:nombre});if(error)throw error;cfgUpdate({gerentes:cfg().gerentes.map(x=>x===orig?nombre:x)})}
+  }
+  if(sup!==null&&S.canCatalog){
+    const x=S.sups.find(y=>y.nombre===nombre);
+    if(sup&&!x){const {error}=await S.sb.from("supervisores").insert({nombre,email,gerente:e.supervisor||""});if(error)throw error}
+    else if(sup&&x){const p={activo:true};if(!x.email&&email)p.email=email;const {error}=await S.sb.from("supervisores").update(p).eq("nombre",nombre);if(error)throw error}
+    else if(!sup&&x&&x.activo!==false){const {error}=await S.sb.from("supervisores").update({activo:false}).eq("nombre",nombre);if(error)throw error}
+    await loadSups();
+  }
+  if(ger!==null&&S.canCatalog){const g=cfg().gerentes||[];
+    if(ger&&!g.includes(nombre))cfgUpdate({gerentes:g.concat([nombre])});else if(!ger&&g.includes(nombre))cfgUpdate({gerentes:g.filter(y=>y!==nombre)})}
+  if(rol!==null&&S.isAdmin){const u=S.users.find(y=>(y.email||"").toLowerCase()===email);
+    if(u&&u.rol!==rol){const {error}=await S.sb.from("perfiles").update({rol}).eq("id",u.id);if(error)throw error;u.rol=rol;renderNav()}}
 }
 async function loadHistory(e){
   const from=addDays(S.date,-29);
@@ -362,6 +411,32 @@ function renderCatalogos(){
   else if(c.id==="supervisores")body.innerHTML=catSupervisores();
   else body.innerHTML=catLista(c);
 }
+const CAMPO={areas:"area",sitios:"sitio",gerentes:"gerente",turnos:"turno",posiciones:"posicion",certs:"cert",supervisores:"supervisor"};
+function editCell(key,v,label){
+  if(S.editing===key+"|"+v)return `<div class="row" style="gap:6px"><input type="text" id="ren-in" value="${esc(v)}" aria-label="Nuevo nombre" style="min-width:180px"><button class="btn primary" data-rensave="${esc(key)}|${esc(v)}">Guardar</button><button class="btn" data-rencancel>Cancelar</button></div>`;
+  return `${label!==undefined?label:esc(v)}${S.canCatalog?` <button class="btn" data-ren="${esc(key)}|${esc(v)}" style="padding:2px 8px;font-size:12px;margin-left:6px">Editar</button>`:""}`;
+}
+function renKeys(obj,old,nu,byPrefix){if(!obj)return obj;const o={};Object.keys(obj).forEach(k=>{let nk=k;if(byPrefix){if(k.startsWith(old+"__"))nk=nu+k.slice(old.length)}else if(k===old)nk=nu;o[nk]=obj[k]});return o}
+async function renameCatalog(key,old,nu){
+  nu=nu.trim();if(!nu||nu===old){S.editing=null;renderCatalogos();return}
+  const C=cfg();
+  if(key!=="supervisores"&&(C[key]||[]).includes(nu)){toast("Ya existe "+nu);return}
+  const {data:n,error}=await S.sb.rpc("renombrar_catalogo",{p_campo:CAMPO[key],p_viejo:old,p_nuevo:nu});
+  if(error){toast(error.message);return}
+  if(key!=="supervisores"){
+    const patch={[key]:(C[key]||[]).map(x=>x===old?nu:x)};
+    const nc=JSON.parse(JSON.stringify(C));Object.assign(nc,patch);
+    if(key==="areas"){nc.areaSitio=renKeys(C.areaSitio,old,nu);nc.req=Object.assign({},C.req,{area:renKeys((C.req||{}).area,old,nu,true)})}
+    if(key==="posiciones"){nc.perfiles=renKeys(C.perfiles,old,nu);nc.certReq=renKeys(C.certReq,old,nu);nc.req=Object.assign({},C.req,{posicion:renKeys((C.req||{}).posicion,old,nu,true)})}
+    if(key==="turnos"){["area","posicion"].forEach(dm=>{const r=(C.req||{})[dm]||{},o={};Object.keys(r).forEach(k=>{o[k.endsWith("__"+old)?k.slice(0,-old.length)+nu:k]=r[k]});nc.req=Object.assign({},nc.req||C.req,{[dm]:o})})}
+    if(key==="certs"){const cr={};Object.keys(C.certReq||{}).forEach(p=>cr[p]=(C.certReq[p]||[]).map(x=>x===old?nu:x));nc.certReq=cr}
+    S.cfg=nc;const {error:e2}=await S.sb.from("config").upsert({id:1,data:nc});if(e2){toast(errMsg(e2));return}
+  }
+  S.editing=null;
+  const {data}=await S.sb.from("empleados").select("*");if(data)S.emps=new Map(data.map(r=>[r.num,r]));
+  if(key==="supervisores")await loadSups();
+  refreshSelects();renderActive();toast(`Cambiado a "${nu}"${n?` · ${n} registro(s) actualizados`:""}`);
+}
 function addRow(key,ph){return S.canCatalog?`<div class="toolbar"><input type="text" id="cat-new" class="grow" placeholder="${esc(ph)}" aria-label="${esc(ph)}"><button class="btn primary" data-add="${key}">Agregar</button></div>`:""}
 function delBtn(key,v){return S.canCatalog?`<button class="btn danger" data-ldel="${key}" data-v="${esc(v)}">Quitar</button>`:""}
 function catPerfiles(){
@@ -370,7 +445,7 @@ function catPerfiles(){
   ${addRow("posiciones","Nueva posición")}
   <div class="perfiles">${C.posiciones.map(p=>{const d=P[p]||{};const ppl=active().filter(e=>e.posicion===p);
     const porT=T.map(t=>[t,ppl.filter(e=>e.turno===t).length]).filter(x=>x[1]);
-    return `<div class="panel perfil"><h3>${esc(p)} <span class="chip">${ppl.length} personas</span>${porT.map(([t,n])=>`<span class="chip acc">${esc(t)}: ${n}</span>`).join("")}</h3>
+    return `<div class="panel perfil"><h3>${editCell("posiciones",p,esc(p))} <span class="chip">${ppl.length} personas</span>${porT.map(([t,n])=>`<span class="chip acc">${esc(t)}: ${n}</span>`).join("")}</h3>
       ${S.canCatalog?`<div class="field"><label for="pf-hr-${esc(p)}">Puesto en HR</label><input id="pf-hr-${esc(p)}" type="text" data-perf="${esc(p)}" data-pf="puestoHR" value="${esc(d.puestoHR||"")}" placeholder="Ej. Material Handler"></div>
       <div class="field"><label for="pf-ds-${esc(p)}">Qué hace</label><textarea id="pf-ds-${esc(p)}" data-perf="${esc(p)}" data-pf="descripcion" rows="3" placeholder="Responsabilidades principales">${esc(d.descripcion||"")}</textarea></div>`
       :`${d.puestoHR?`<div class="muted" style="font-size:13px">Puesto en HR: ${esc(d.puestoHR)}</div>`:""}<p class="desc">${d.descripcion?esc(d.descripcion):'<span class="muted">Sin descripción.</span>'}</p>`}
@@ -386,7 +461,7 @@ function catSupervisores(){
   ${ed?`<div class="toolbar"><input type="text" id="sup-nombre" class="grow" placeholder="Nombre del supervisor" aria-label="Nombre del supervisor"><input type="email" id="sup-email" placeholder="correo@flex.com" aria-label="Correo"><select id="sup-ger" aria-label="Gerente"><option value="">Gerente</option>${ger.map(g=>`<option>${esc(g)}</option>`).join("")}</select><button class="btn primary" id="sup-add">Agregar</button></div>`:""}
   <div class="panel" style="padding:0"><div class="scroll"><table><thead><tr><th>Supervisor</th><th>Correo de su cuenta</th><th>Gerente</th><th class="num">Personas</th><th>Activo</th><th></th></tr></thead><tbody>${
     S.sups.map(x=>{const n=countBy("supervisor",x.nombre),em=(x.email||"").toLowerCase();
-      return `<tr><td><b style="font-weight:600">${esc(x.nombre)}</b></td>
+      return `<tr><td>${editCell("supervisores",x.nombre,`<b style="font-weight:600">${esc(x.nombre)}</b>`)}</td>
       <td><input type="email" data-sup="${esc(x.nombre)}" data-sf="email" value="${esc(x.email||"")}" placeholder="Sin cuenta" aria-label="Correo de ${esc(x.nombre)}" style="width:100%;min-width:200px" ${dis}>
         ${S.isAdmin&&em?(cuentas.has(em)?'<div class="small" style="color:var(--ok)">Tiene cuenta</div>':'<div class="small" style="color:var(--warn)">Aún no tiene cuenta en la app</div>'):""}${!em?'<div class="small" style="color:var(--warn)">Sin correo: nadie puede aprobar por él</div>':""}</td>
       <td><select data-sup="${esc(x.nombre)}" data-sf="gerente" aria-label="Gerente de ${esc(x.nombre)}" ${dis}>${opt(ger,x.gerente,"Sin gerente")}</select></td>
@@ -400,12 +475,14 @@ function catLista(c){
   const C=cfg(),arr=C[c.key]||[];
   const extra=c.id==="gerentes";
   const orphan=[...new Set(active().map(e=>e[c.field]).filter(v=>v&&!arr.includes(v)))];
-  return `<div class="cathead"><h2>${esc(c.label)}</h2><p>${esc(c.help)}</p></div>
-  ${addRow(c.key,"Nuevo "+c.one)}
-  <div class="panel" style="padding:0"><div class="scroll"><table><thead><tr><th>${esc(c.label.slice(0,-1)==="Área"?"Área":c.one[0].toUpperCase()+c.one.slice(1))}</th><th class="num">Personas</th>${extra?"<th>Supervisores en su equipo</th>":""}<th></th></tr></thead><tbody>${
-    arr.map(v=>{const n=countBy(c.field,v);
+  const isA=c.id==="areas",sit=cfg().sitios||[],AS=cfg().areaSitio||{};
+  const lista=isA?arr.slice().sort((a,b)=>(sitioCorto(AS[a]||"~")).localeCompare(sitioCorto(AS[b]||"~"))||a.localeCompare(b)):arr;
+  return `<div class="cathead"><h2>${esc(c.label)}</h2><p>${esc(c.help)}${isA?" Cada área pertenece a un edificio; al filtrar la cobertura por sitio solo aparecen sus áreas.":""}</p></div>
+  ${isA&&S.canCatalog?`<div class="toolbar"><input type="text" id="cat-new" class="grow" placeholder="Nueva área" aria-label="Nueva área"><select id="cat-new-sitio" aria-label="Edificio"><option value="">Edificio</option>${sit.map(x=>`<option value="${esc(x)}">${esc(sitioCorto(x))}</option>`).join("")}</select><button class="btn primary" data-add="areas">Agregar</button></div>`:addRow(c.key,"Nuevo "+c.one)}
+  <div class="panel" style="padding:0"><div class="scroll"><table><thead><tr><th>${esc(c.label.slice(0,-1)==="Área"?"Área":c.one[0].toUpperCase()+c.one.slice(1))}</th>${isA?"<th>Edificio</th>":""}<th class="num">Personas</th>${extra?"<th>Supervisores en su equipo</th>":""}<th></th></tr></thead><tbody>${
+    lista.map(v=>{const n=countBy(c.field,v);
       const sups=extra?[...new Set(active().filter(e=>e.gerente===v).map(e=>e.supervisor).filter(Boolean))].sort():[];
-      return `<tr><td>${esc(c.id==="sitios"?sitioCorto(v):v)}${c.id==="sitios"&&sitioCorto(v)!==v?`<div class="muted" style="font-size:12px">${esc(v)}</div>`:""}</td><td class="num">${n||'<span class="muted">0</span>'}</td>${extra?`<td style="font-size:13.5px">${sups.map(esc).join(", ")||'<span class="muted">—</span>'}</td>`:""}<td style="text-align:right">${delBtn(c.key,v)}</td></tr>`}).join("")||`<tr><td colspan="4" class="empty">Vacío.</td></tr>`
+      return `<tr><td>${editCell(c.key,v,esc(c.id==="sitios"?sitioCorto(v):v))}${c.id==="sitios"&&sitioCorto(v)!==v?`<div class="muted" style="font-size:12px">${esc(v)}</div>`:""}</td>${isA?`<td><select data-asitio="${esc(v)}" aria-label="Edificio de ${esc(v)}" ${S.canCatalog?"":"disabled"}><option value="">Sin edificio</option>${sit.map(x=>`<option value="${esc(x)}" ${AS[v]===x?"selected":""}>${esc(sitioCorto(x))}</option>`).join("")}</select></td>`:""}<td class="num">${n||'<span class="muted">0</span>'}</td>${extra?`<td style="font-size:13.5px">${sups.map(esc).join(", ")||'<span class="muted">—</span>'}</td>`:""}<td style="text-align:right">${delBtn(c.key,v)}</td></tr>`}).join("")||`<tr><td colspan="4" class="empty">Vacío.</td></tr>`
   }</tbody></table></div></div>
   ${orphan.length?`<div class="banner">Hay personas con ${esc(c.one)} que no está en el catálogo: ${orphan.map(esc).join(", ")}. ${S.canCatalog?"Agrégalo arriba o corrige sus fichas.":""}</div>`:""}`;
 }
@@ -419,7 +496,7 @@ function catCerts(){
   ${addRow("certs","Nueva certificación")}
   <div class="panel" style="padding:0"><div class="scroll"><table><thead><tr><th>Certificación</th><th>Requerida para</th><th class="num">Vigentes</th><th class="num">Por vencer</th><th class="num">Vencidas</th><th></th></tr></thead><tbody>${
     C.certs.map(n=>{let v=0,p=0,x=0;A.forEach(e=>(e.certs||[]).forEach(c=>{if(c.nombre!==n)return;if(!certValid(c,on))x++;else if(c.vence&&c.vence<=soon30)p++;else v++}));
-      return `<tr><td>${esc(n)}</td><td>${reqBy(n).map(p=>`<span class="chip">${esc(p)}</span>`).join(" ")||'<span class="muted">—</span>'}</td><td class="num">${v}</td><td class="num" style="color:${p?"var(--warn)":"inherit"}">${p}</td><td class="num" style="color:${x?"var(--bad)":"inherit"}">${x}</td><td style="text-align:right">${S.canCatalog?`<button class="btn danger" data-certdel="${esc(n)}">Quitar</button>`:""}</td></tr>`}).join("")||'<tr><td colspan="6" class="empty">Sin certificaciones.</td></tr>'
+      return `<tr><td>${editCell("certs",n)}</td><td>${reqBy(n).map(p=>`<span class="chip">${esc(p)}</span>`).join(" ")||'<span class="muted">—</span>'}</td><td class="num">${v}</td><td class="num" style="color:${p?"var(--warn)":"inherit"}">${p}</td><td class="num" style="color:${x?"var(--bad)":"inherit"}">${x}</td><td style="text-align:right">${S.canCatalog?`<button class="btn danger" data-certdel="${esc(n)}">Quitar</button>`:""}</td></tr>`}).join("")||'<tr><td colspan="6" class="empty">Sin certificaciones.</td></tr>'
   }</tbody></table></div></div>
   <div class="panel"><h2>Vencimientos <span class="sub">vencidas y próximos 60 días</span></h2><div class="scroll">${exp.length?`<table><thead><tr><th>Persona</th><th>Certificación</th><th>Vence</th><th>Turno</th><th>Celular</th></tr></thead><tbody>${exp.map(({e,c})=>`<tr class="click" data-emp="${esc(e.num)}"><td>${esc(e.nombre)}</td><td>${esc(c.nombre)}${c.folio?` <span class="mono muted">${esc(c.folio)}</span>`:""}</td><td><span class="chip ${c.vence<on?"bad":"warn"}">${c.vence<on?"Vencida ":""}${fmtD(c.vence)}</span></td><td>${esc(e.turno)}</td><td class="tel">${esc(e.celular||"—")}</td></tr>`).join("")}</tbody></table>`:`<div class="empty">Nada vence en los próximos 60 días.</div>`}</div></div>
   <div class="panel"><h2>Sin la certificación que pide su posición</h2><div class="scroll">${miss.length?`<table><thead><tr><th>Persona</th><th>Posición</th><th>Le falta</th><th>Turno</th></tr></thead><tbody>${miss.map(({e,m})=>`<tr class="click" data-emp="${esc(e.num)}"><td>${esc(e.nombre)}</td><td>${esc(e.posicion)}</td><td>${m.map(n=>`<span class="chip warn">${esc(n)}</span>`).join(" ")}</td><td>${esc(e.turno)}</td></tr>`).join("")}</tbody></table>`:`<div class="empty">Todos tienen las certificaciones que pide su posición.</div>`}</div></div>`;
@@ -468,7 +545,7 @@ function openMovModal(tipo,num){
   root.innerHTML=`<div class="modal-scrim"><div class="panel modal" role="dialog" aria-modal="true" aria-labelledby="mv-t" style="width:min(520px,100%)">
     <div class="ph"><h3 id="mv-t">${tipo==="pase"?"Pasar persona a otro supervisor":"Solicitar persona de otro supervisor"}</h3><button class="btn" id="mv-x">Cancelar</button></div>
     <form class="pb" id="f-mv" style="display:grid;gap:12px">
-      <p class="small muted" style="margin:0">${tipo==="pase"?"El supervisor que la recibe debe aprobar el pase.":"El supervisor actual de la persona debe aprobar soltarla."} Hasta que se apruebe, la persona sigue con su supervisor actual.</p>
+      <p class="small muted" style="margin:0">${S.isAdmin?"Como administrador, el cambio se aplica al momento y queda en el historial.":(tipo==="pase"?"El supervisor que la recibe debe aprobar el pase.":"El supervisor actual de la persona debe aprobar soltarla.")+" Hasta que se apruebe, la persona sigue con su supervisor actual."}</p>
       <div class="field"><label for="mv-num">Persona</label><select id="mv-num" required>${ppl.length?"":'<option value="">No hay personas disponibles</option>'}${ppl.map(e=>`<option value="${esc(e.num)}" ${e.num===num?"selected":""}>${esc(e.nombre)} · ${esc(e.supervisor||"sin supervisor")}</option>`).join("")}</select></div>
       <div class="field"><label for="mv-dest">${tipo==="pase"?"Pasar a":"Para el equipo de"}</label><select id="mv-dest" required></select></div>
       <div class="field"><label for="mv-mot">Motivo</label><textarea id="mv-mot" placeholder="Ej. apoyo en otra línea, cambio de turno, balanceo de equipo"></textarea></div>
@@ -480,7 +557,8 @@ function openMovModal(tipo,num){
   $("#f-mv").onsubmit=async ev=>{ev.preventDefault();const btn=ev.target.querySelector("button.primary");btn.disabled=true;
     const {error}=await S.sb.rpc("solicitar_movimiento",{p_num:$("#mv-num").value,p_tipo:tipo,p_destino:$("#mv-dest").value,p_motivo:$("#mv-mot").value.trim()});
     if(error){$("#mv-err").textContent=error.message;btn.disabled=false;return}
-    root.innerHTML="";toast("Solicitud enviada");await loadMovs();
+    root.innerHTML="";toast(S.isAdmin?"Cambio aplicado (administrador, sin aprobación)":"Solicitud enviada");await loadMovs();
+    if(S.isAdmin){const {data}=await S.sb.from("empleados").select("*");if(data){S.emps=new Map(data.map(r=>[r.num,r]));refreshSelects();renderActive()}}
     if(S.tab!=="movimientos")location.hash="movimientos";};
 }
 async function loadMovs(){
@@ -572,20 +650,17 @@ function renderNav(){
   $("#tabs").innerHTML=(S.tabs||[]).map(t=>`<button data-tab="${t}" aria-current="${S.tab===t?"page":"false"}" title="${esc(TABS[t].label)}" aria-label="${esc(TABS[t].label)}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${TABS[t].icon}</svg><span class="t">${esc(TABS[t].label)}</span>${t==="usuarios"&&pend?`<span class="tab-n" title="${pend} cuenta(s) sin acceso">${pend}</span>`:""}${t==="movimientos"&&pendingToApprove()?`<span class="tab-n" title="Por aprobar">${pendingToApprove()}</span>`:""}</button>`).join("");
   $("#who").innerHTML=`<span class="nm" title="${esc(S.session?S.session.user.email:"")}">${esc(S.session?S.session.user.email:"")}</span><span class="role">${esc(ROLE_LABEL(S.rol))}</span>
     <div class="acts"><button id="chpass" title="Cambiar contraseña" aria-label="Cambiar contraseña"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="8" cy="15" r="4"/><path d="M11 12l9-9M17 6l3 3M15 8l2 2"/></svg><span class="t">Contraseña</span></button>
+    <button id="theme" title="Cambiar tema" aria-label="Cambiar a tema ${curTheme()==="dark"?"claro":"oscuro"}">${curTheme()==="dark"?'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg><span class="t">Claro</span>':'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 14.5A8 8 0 019.5 4 8 8 0 1020 14.5z"/></svg><span class="t">Oscuro</span>'}</button>
     <button id="logout" title="Salir" aria-label="Salir"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 4h4v16h-4M10 8l-4 4 4 4M6 12h10"/></svg><span class="t">Salir</span></button></div>`;
 }
 document.addEventListener("click",e=>{
   const t=e.target.closest("#tabs [data-tab]");if(t){if(location.hash.slice(1)===t.dataset.tab)setTab(t.dataset.tab);else location.hash=t.dataset.tab;return}
   if(e.target.closest("#logout"))S.sb.auth.signOut();
   if(e.target.closest("#chpass"))openChangePassword();
-  if(e.target.closest("#side-toggle"))setMenuCollapsed(!$("#shell").classList.contains("collapsed"));
+  if(e.target.closest("#theme")){setTheme(curTheme()==="dark"?"light":"dark");renderNav()}
 });
-function setMenuCollapsed(c){
-  $("#shell").classList.toggle("collapsed",c);const b=$("#side-toggle"),l=c?"Expandir menú":"Contraer menú";
-  b.setAttribute("aria-expanded",String(!c));b.setAttribute("aria-label",l);b.title=l;
-  try{localStorage.setItem("cp_menu_contraido",c?"1":"0")}catch(e){}
-}
-try{if(localStorage.getItem("cp_menu_contraido")==="1")setMenuCollapsed(true)}catch(e){}
+const curTheme=()=>document.documentElement.getAttribute("data-theme")==="dark"?"dark":"light";
+function setTheme(t){document.documentElement.setAttribute("data-theme",t);try{localStorage.setItem("cp_tema",t)}catch(e){}}
 function openChangePassword(){
   const root=$("#modal-root");
   root.innerHTML=`<div class="modal-scrim"><div class="panel modal" role="dialog" aria-modal="true" aria-labelledby="cp-t">
@@ -628,7 +703,7 @@ $("#l-q").addEventListener("input",renderLista);
 $("#l-list").addEventListener("click",e=>{const b=e.target.closest("[data-mark]");if(b&&S.canMark)mark(b.dataset.emp,b.dataset.mark)});
 $("#l-all").addEventListener("click",markAll);
 $("#p-q").addEventListener("input",renderPersonal);
-["#p-turno","#p-pos","#p-area","#p-sitio","#p-ger","#p-sup","#p-bajas"].forEach(s=>$(s).addEventListener("change",renderPersonal));
+["#p-turno","#p-pos","#p-area","#p-sitio","#p-ger","#p-sup","#p-cargo","#p-bajas"].forEach(s=>$(s).addEventListener("change",renderPersonal));
 $("#p-new").addEventListener("click",()=>openEmp(null));
 document.addEventListener("click",e=>{const r=e.target.closest("tr[data-emp]");if(r&&!e.target.closest("button,select,input"))openEmp(r.dataset.emp)});
 $("#drawer-root").addEventListener("click",e=>{
@@ -645,8 +720,12 @@ CV.addEventListener("click",e=>{
   if(n){S.cat=n.dataset.cat;try{localStorage.setItem("cp_cat",S.cat)}catch(_){}renderCatalogos();return}
   const a=e.target.closest("[data-add]");
   if(a){const k=a.dataset.add;const v=$("#cat-new").value.trim();if(!v)return;
-    const arr=cfg()[k]||[];if(arr.includes(v)){toast("Ya existe");return}cfgUpdate({[k]:arr.concat([v])});return}
+    const arr=cfg()[k]||[];if(arr.includes(v)){toast("Ya existe");return}
+    const p={[k]:arr.concat([v])};const ns=$("#cat-new-sitio");if(k==="areas"&&ns&&ns.value)p.areaSitio={[v]:ns.value};cfgUpdate(p);return}
   if(e.target.id==="sup-add"){addSup();return}
+  const rn=e.target.closest("[data-ren]");if(rn){const i=rn.dataset.ren.indexOf("|");S.editing=rn.dataset.ren;renderCatalogos();const inp=$("#ren-in");if(inp){inp.focus();inp.select()}return}
+  if(e.target.closest("[data-rencancel]")){S.editing=null;renderCatalogos();return}
+  const rs=e.target.closest("[data-rensave]");if(rs){const i=rs.dataset.rensave.indexOf("|");renameCatalog(rs.dataset.rensave.slice(0,i),rs.dataset.rensave.slice(i+1),$("#ren-in").value);return}
   const sd=e.target.closest("[data-supdel]");
   if(sd){if(sd.dataset.confirm!=="1"){sd.dataset.confirm="1";sd.textContent="¿Seguro?";setTimeout(()=>{if(sd.isConnected){sd.dataset.confirm="";sd.textContent="Quitar"}},3000);return}
     S.sb.from("supervisores").delete().eq("nombre",sd.dataset.supdel).then(({error})=>{if(error)toast(errMsg(error));else{S.sups=S.sups.filter(x=>x.nombre!==sd.dataset.supdel);refreshSelects();renderActive();toast("Supervisor quitado")}});return}
@@ -660,7 +739,8 @@ CV.addEventListener("click",e=>{
     cfgUpdate(patch);
   }
 });
-CV.addEventListener("keydown",e=>{if(e.key==="Enter"&&e.target.id==="cat-new"){const b=CV.querySelector("[data-add]");if(b)b.click()}});
+CV.addEventListener("keydown",e=>{if(e.key==="Enter"&&e.target.id==="cat-new"){const b=CV.querySelector("[data-add]");if(b)b.click()}
+  if(e.target.id==="ren-in"){if(e.key==="Enter"){const b=CV.querySelector("[data-rensave]");if(b)b.click()}if(e.key==="Escape"){S.editing=null;renderCatalogos()}}});
 const UV=$("#v-usuarios");
 UV.addEventListener("keydown",e=>{if(e.key==="Enter"&&e.target.id==="role-new")addRole()});
 UV.addEventListener("click",async e=>{
@@ -710,6 +790,7 @@ async function delRole(n){
 CV.addEventListener("change",async e=>{
   const c=e.target.closest("[data-creq]");
   if(c){const p=c.dataset.creq;const vals=[...CV.querySelectorAll("[data-creq]")].filter(x=>x.dataset.creq===p&&x.checked).map(x=>x.value);cfgUpdate({certReq:{[p]:vals}});return}
+  const as=e.target.closest("[data-asitio]");if(as){cfgUpdate({areaSitio:{[as.dataset.asitio]:as.value||null}});toast("Edificio actualizado");return}
   const sf=e.target.closest("[data-sup]");
   if(sf){const k=sf.dataset.sf,v=k==="activo"?sf.checked:sf.value.trim().toLowerCase&&k==="email"?sf.value.trim().toLowerCase():sf.value;
     const {error}=await S.sb.from("supervisores").update({[k]:v}).eq("nombre",sf.dataset.sup);
@@ -763,7 +844,7 @@ async function loadRoles(){
 function applyPerms(){
   const r=S.roles.find(x=>x.nombre===S.rol);
   S.isAdmin=S.rol==="admin";
-  S.perms=new Set(S.isAdmin?PERMS.map(p=>p.id):((r&&r.permisos)||[]).filter(x=>!x.startsWith("tab:")));
+  S.perms=new Set(S.isAdmin?PRIVS.filter(p=>!p.k.startsWith("tab:")).map(p=>p.k):((r&&r.permisos)||[]).filter(x=>!x.startsWith("tab:")));
   S.tabs=tabsOfRole(S.rol,r&&r.permisos);
   S.canMark=S.perms.has("pasar_lista");S.canPersonal=S.perms.has("editar_personal");
   S.canCatalog=S.perms.has("editar_catalogos");S.canReq=S.perms.has("editar_requeridos");

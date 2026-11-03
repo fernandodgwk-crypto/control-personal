@@ -17,7 +17,13 @@ App web para pase de lista por turno, cobertura por área y posición (áreas de
 - **Catálogos:** perfiles, certificaciones, **supervisores** (cada uno ligado por correo a su cuenta, que es la que aprueba), áreas, sitios, gerentes y turnos.
 - **Usuarios** (solo admin): rol de cada cuenta y **Permisos por rol** (pestañas que ve y acciones que puede hacer).
 
-Este proyecto de Supabase lo comparte la app de Surtido de Línea: las cuentas nuevas entran con rol `sin_acceso` y no ven datos hasta que el administrador les asigna un rol (`supabase/acceso.sql`).
+Este proyecto de Supabase lo comparte la app de Surtido de Línea: las cuentas nuevas entran con rol `sin_acceso` y no ven datos hasta que el administrador les asigna un rol (aplicado; ver `supabase/admin_y_catalogos.sql`).
+
+- **Pase de lista:** cada supervisor ve solo a su personal (según el correo ligado en Catálogos → Supervisores). El admin y quien gestione movimientos ven a todos.
+- **Personal:** todo el personal, incluidos supervisores, gerentes y dirección. En la ficha se marca *Es supervisor* / *Es gerente* y, si la persona tiene cuenta, el admin le asigna su rol en la app.
+- **Admin:** aprueba cualquier movimiento y sus propios cambios de supervisor se aplican sin aprobación.
+- **Catálogos:** cada elemento se puede editar (renombrar); el cambio se lleva a todas las fichas. Las áreas tienen edificio.
+- **Tema claro/oscuro** con el botón de la barra (claro por defecto). La barra lateral se expande al pasar el cursor.
 
 ## Roles
 
