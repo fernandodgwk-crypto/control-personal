@@ -9,7 +9,7 @@ const pad=n=>String(n).padStart(2,"0");
 const ymd=d=>d.getFullYear()+"-"+pad(d.getMonth()+1)+"-"+pad(d.getDate());
 const addDays=(s,n)=>{const d=new Date(s+"T12:00:00");d.setDate(d.getDate()+n);return ymd(d)};
 const fmtD=s=>{if(!s)return"";const [y,m,d]=String(s).slice(0,10).split("-");return d+"/"+m+"/"+y};
-const VIEWS=["cobertura","lista","personal","catalogos"];
+const VIEWS=["cobertura","lista","personal","reportes","catalogos","usuarios"];
 const sitioCorto=x=>String(x||"").replace(/^MX Guadalajara North\s*/i,"")||String(x||"");
 
 const S={sb:null,session:null,rol:"lector",perms:new Set(),isAdmin:false,canMark:false,canPersonal:false,canCatalog:false,canReq:false,roles:[],emps:new Map(),cfg:null,att:{},date:ymd(new Date()),
@@ -22,7 +22,37 @@ const PERMS=[
   {id:"editar_catalogos",label:"Editar catálogos",desc:"Perfiles, áreas, sitios, gerentes, turnos y tipos de certificación."},
   {id:"editar_requeridos",label:"Editar requeridos",desc:"Cuántas personas requiere cada área o posición por turno en la cobertura."}
 ];
-const DEFAULT_ROLES=[{nombre:"admin",permisos:PERMS.map(p=>p.id)},{nombre:"supervisor",permisos:["pasar_lista"]},{nombre:"lector",permisos:[]}];
+const TABS={
+  cobertura:{label:"Cobertura",sub:"Presentes contra requeridos por área o posición y turno. En rojo, lo que está descubierto.",icon:'<path d="M3 3h7v7H3zM14 3h7v7h-7zM3 14h7v7H3z"/><path d="M14 17.5l2.2 2.2 4.3-4.4"/>'},
+  lista:{label:"Pase de lista",sub:"Marca la asistencia de cada persona del turno.",icon:'<path d="M9 6h12M9 12h12M9 18h12"/><path d="M3.5 6l1.2 1.2L7 5M3.5 12l1.2 1.2L7 11M3.5 18l1.2 1.2L7 17"/>'},
+  personal:{label:"Personal",sub:"Fichas con celular, sitio, a quién reporta y certificaciones.",icon:'<circle cx="9" cy="8" r="3.5"/><path d="M2.5 20c.8-3.5 3.4-5.5 6.5-5.5s5.7 2 6.5 5.5"/><path d="M16 4.5a3.5 3.5 0 010 7M18 14.8c1.9.8 3.1 2.6 3.5 5.2"/>'},
+  reportes:{label:"Reportes",sub:"Asistencia, ausentismo y cobertura por periodo, con gráficas y descarga a Excel o CSV.",icon:'<path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/>'},
+  catalogos:{label:"Catálogos",sub:"Perfiles, certificaciones, áreas, sitios, gerentes y turnos.",icon:'<path d="M4 4h6v6H4zM4 14h6v6H4z"/><path d="M14 6h7M14 9h5M14 16h7M14 19h5"/>'},
+  usuarios:{label:"Usuarios",sub:"Quién entra a la app y qué puede hacer cada rol.",icon:'<rect x="4" y="3" width="16" height="18" rx="2"/><circle cx="12" cy="10" r="3"/><path d="M8 17c1-2 2.5-3 4-3s3 1 4 3"/>'}
+};
+const TAB_ORDER=["cobertura","lista","personal","reportes","catalogos"];
+const PRIVS=[
+  ...TAB_ORDER.map(t=>({k:"tab:"+t,g:"Pestañas que ve",l:TABS[t].label})),
+  {k:"pasar_lista",g:"Acciones",l:"Pasar lista (asistencia, retardos, faltas, permisos, vacaciones, incapacidades)",tab:"lista"},
+  {k:"editar_personal",g:"Acciones",l:"Editar personal (altas, bajas, fichas, celular, certificaciones)",tab:"personal"},
+  {k:"editar_requeridos",g:"Acciones",l:"Editar requeridos de la cobertura",tab:"cobertura"},
+  {k:"editar_catalogos",g:"Acciones",l:"Editar catálogos (perfiles, áreas, sitios, gerentes, turnos, certificaciones)",tab:"catalogos"}
+];
+const ROLE_DEFAULTS={
+  supervisor:["tab:cobertura","tab:lista","tab:personal","tab:reportes","pasar_lista"],
+  lector:["tab:cobertura","tab:personal","tab:reportes"],
+  sin_acceso:[]
+};
+const ROLE_LABEL=r=>({admin:"Administrador",supervisor:"Supervisor",lector:"Lector",sin_acceso:"Sin acceso"})[r]||r;
+const DEFAULT_ROLES=[{nombre:"admin",permisos:PERMS.map(p=>p.id)},{nombre:"supervisor",permisos:ROLE_DEFAULTS.supervisor},{nombre:"lector",permisos:ROLE_DEFAULTS.lector}];
+// Pestañas de un rol. Roles creados antes de que existieran permisos de pestaña ven todo menos Usuarios.
+function tabsOfRole(nombre,permisos){
+  if(nombre==="admin")return [...TAB_ORDER,"usuarios"];
+  if(nombre==="sin_acceso")return [];
+  const p=permisos||[];
+  if(!p.some(x=>x.startsWith("tab:")))return TAB_ORDER.slice();
+  return TAB_ORDER.filter(t=>p.includes("tab:"+t)||PRIVS.some(x=>x.tab===t&&p.includes(x.k)));
+}
 const DEFAULT_CFG={areas:[],posiciones:[],turnos:["1 Gdl","2 Gdl","3 Gdl"],sitios:[],gerentes:[],perfiles:{},certs:[],certReq:{},req:{area:{},posicion:{}}};
 const cfg=()=>S.cfg||DEFAULT_CFG;
 const active=()=>[...S.emps.values()].filter(e=>e.activo!==false);
@@ -306,9 +336,7 @@ const CATS=[
   {id:"areas",label:"Áreas",key:"areas",field:"area",group:"Organización",one:"área",help:"Procesos o zonas donde trabaja cada persona. Se usan en la cobertura por área."},
   {id:"sitios",label:"Sitios",key:"sitios",field:"sitio",group:"Organización",one:"sitio",help:"Edificio o planta a la que pertenece cada persona."},
   {id:"gerentes",label:"Gerentes",key:"gerentes",field:"gerente",group:"Organización",one:"gerente",help:"Gerente al que reporta cada persona. Debajo de cada uno se ven los supervisores de su equipo."},
-  {id:"turnos",label:"Turnos",key:"turnos",field:"turno",group:"Organización",one:"turno",help:"Turnos de trabajo. Cada turno es una columna de la matriz de cobertura."},
-  {id:"usuarios",label:"Usuarios",group:"Acceso",admin:true},
-  {id:"roles",label:"Roles y permisos",group:"Acceso",admin:true}
+  {id:"turnos",label:"Turnos",key:"turnos",field:"turno",group:"Organización",one:"turno",help:"Turnos de trabajo. Cada turno es una columna de la matriz de cobertura."}
 ];
 const countBy=(f,v)=>active().filter(e=>e[f]===v).length;
 function renderCatalogos(){
@@ -317,15 +345,13 @@ function renderCatalogos(){
   if(!cats.some(c=>c.id===S.cat))S.cat="perfiles";
   let nav="",g="";
   cats.forEach(c=>{if(c.group!==g){g=c.group;nav+=`<div class="cat-h">${esc(g)}</div>`}
-    const n=c.key?(C[c.key]||[]).length:c.id==="roles"?S.roles.length:(S.users.length||"");
+    const n=(C[c.key]||[]).length;
     nav+=`<button data-cat="${c.id}" aria-current="${S.cat===c.id}">${esc(c.label)}<span class="n">${n}</span></button>`});
   $("#cat-nav").innerHTML=nav;
   const c=cats.find(x=>x.id===S.cat);
   const body=$("#cat-body");
   if(c.id==="perfiles")body.innerHTML=catPerfiles();
   else if(c.id==="certificaciones")body.innerHTML=catCerts();
-  else if(c.id==="usuarios")body.innerHTML=catUsuarios();
-  else if(c.id==="roles")body.innerHTML=catRoles();
   else body.innerHTML=catLista(c);
 }
 function addRow(key,ph){return S.canCatalog?`<div class="toolbar"><input type="text" id="cat-new" class="grow" placeholder="${esc(ph)}" aria-label="${esc(ph)}"><button class="btn primary" data-add="${key}">Agregar</button></div>`:""}
@@ -372,23 +398,33 @@ function catCerts(){
   <div class="panel"><h2>Vencimientos <span class="sub">vencidas y próximos 60 días</span></h2><div class="scroll">${exp.length?`<table><thead><tr><th>Persona</th><th>Certificación</th><th>Vence</th><th>Turno</th><th>Celular</th></tr></thead><tbody>${exp.map(({e,c})=>`<tr class="click" data-emp="${esc(e.num)}"><td>${esc(e.nombre)}</td><td>${esc(c.nombre)}${c.folio?` <span class="mono muted">${esc(c.folio)}</span>`:""}</td><td><span class="chip ${c.vence<on?"bad":"warn"}">${c.vence<on?"Vencida ":""}${fmtD(c.vence)}</span></td><td>${esc(e.turno)}</td><td class="tel">${esc(e.celular||"—")}</td></tr>`).join("")}</tbody></table>`:`<div class="empty">Nada vence en los próximos 60 días.</div>`}</div></div>
   <div class="panel"><h2>Sin la certificación que pide su posición</h2><div class="scroll">${miss.length?`<table><thead><tr><th>Persona</th><th>Posición</th><th>Le falta</th><th>Turno</th></tr></thead><tbody>${miss.map(({e,m})=>`<tr class="click" data-emp="${esc(e.num)}"><td>${esc(e.nombre)}</td><td>${esc(e.posicion)}</td><td>${m.map(n=>`<span class="chip warn">${esc(n)}</span>`).join(" ")}</td><td>${esc(e.turno)}</td></tr>`).join("")}</tbody></table>`:`<div class="empty">Todos tienen las certificaciones que pide su posición.</div>`}</div></div>`;
 }
-function catRoles(){
-  const users=S.users;
-  const head=`<div class="cathead"><h2>Roles y permisos</h2><p>Marca qué puede hacer cada rol. Todos los roles pueden consultar la información. Los cambios se aplican al momento y la base de datos los hace cumplir.</p></div>`;
-  if(!S.rolesDb)return head+`<div class="banner">Falta activar los roles en la base de datos. Ejecuta el archivo supabase/roles.sql en el SQL Editor de Supabase y recarga la página.</div>`;
-  return head+`<div class="toolbar"><input type="text" id="role-new" class="grow" placeholder="Nuevo rol (ej. rh, lider)" aria-label="Nuevo rol"><button class="btn primary" data-radd>Agregar rol</button></div>
-  <div class="panel" style="padding:0"><div class="scroll"><table class="roles"><thead><tr><th>Rol</th>${PERMS.map(p=>`<th title="${esc(p.desc)}" style="text-align:center">${esc(p.label)}</th>`).join("")}<th class="num">Usuarios</th><th></th></tr></thead><tbody>${
-    S.roles.map(r=>{const adm=r.nombre==="admin";const n=users.filter(u=>u.rol===r.nombre).length;
-      return `<tr><td><b>${esc(r.nombre)}</b><div><input type="text" data-rdesc="${esc(r.nombre)}" value="${esc(r.descripcion||"")}" placeholder="Descripción" aria-label="Descripción de ${esc(r.nombre)}" style="width:100%;margin-top:4px;font-size:13px" ${adm?"disabled":""}></div></td>
-      ${PERMS.map(p=>`<td style="text-align:center"><input type="checkbox" data-rperm="${esc(r.nombre)}" value="${p.id}" aria-label="${esc(p.label)} para ${esc(r.nombre)}" ${adm||(r.permisos||[]).includes(p.id)?"checked":""} ${adm?"disabled":""}></td>`).join("")}
-      <td class="num">${n}</td><td style="text-align:right">${adm?'<span class="muted" style="font-size:12px">Siempre todo</span>':`<button class="btn danger" data-rdel="${esc(r.nombre)}" ${n?'disabled title="Tiene usuarios asignados"':""}>Quitar</button>`}</td></tr>`}).join("")
-  }</tbody></table></div></div>
-  <div class="panel"><h2>Qué permite cada permiso</h2><dl style="margin:0;display:grid;grid-template-columns:max-content 1fr;gap:6px 14px">${PERMS.map(p=>`<dt style="font-weight:600">${esc(p.label)}</dt><dd style="margin:0" class="muted">${esc(p.desc)}</dd>`).join("")}
-    <dt style="font-weight:600">Solo admin</dt><dd style="margin:0" class="muted">Administrar usuarios y roles. El rol admin siempre tiene todos los permisos y no se puede quitar.</dd></dl></div>`;
-}
-function catUsuarios(){
-  return `<div class="cathead"><h2>Usuarios</h2><p>Asigna a cada usuario un rol. Lo que puede hacer cada rol se define en Roles y permisos.</p></div>
-  <div class="panel" style="padding:0"><div class="scroll">${S.users.length?`<table><thead><tr><th>Correo</th><th>Rol</th></tr></thead><tbody>${S.users.map(u=>`<tr><td>${esc(u.email)}${u.id===S.session.user.id?' <span class="chip">tú</span>':""}</td><td><select data-urol="${esc(u.id)}" aria-label="Rol de ${esc(u.email)}" ${u.id===S.session.user.id?"disabled":""}>${S.roles.map(r=>`<option value="${esc(r.nombre)}" ${u.rol===r.nombre?"selected":""}>${esc(r.nombre)}</option>`).join("")}</select></td></tr>`).join("")}</tbody></table>`:`<div class="empty">Cargando usuarios…</div>`}</div></div>`;
+/* ---------- Usuarios y permisos por rol (solo admin) ---------- */
+let PD=null; // borrador de permisos {rol:Set}
+function permDraft(){if(!PD)PD=Object.fromEntries(S.roles.filter(r=>r.nombre!=="admin").map(r=>[r.nombre,new Set(r.permisos||[])]));return PD}
+function renderUsuarios(){
+  const root=$("#usr-root");
+  if(!S.isAdmin){root.innerHTML=`<div class="panel empty">Solo el administrador ve esta sección.</div>`;return}
+  const roles=S.roles,others=roles.filter(r=>r.nombre!=="admin"),d=permDraft();
+  const saved=Object.fromEntries(others.map(r=>[r.nombre,[...(r.permisos||[])].sort().join(",")]));
+  const dirty=others.some(r=>[...(d[r.nombre]||[])].sort().join(",")!==saved[r.nombre]);
+  const pend=S.users.filter(u=>u.rol==="sin_acceso").length;
+  const grupos=[...new Set(PRIVS.map(p=>p.g))];
+  const usersHtml=`<div class="panel"><div class="ph"><div><h3>Usuarios</h3><p class="small muted" style="margin:2px 0 0">Todas las cuentas del proyecto de Supabase (también las de Surtido). Una cuenta con rol <b>Sin acceso</b> no ve ningún dato de esta app.</p></div>${pend?`<span class="chip warn">${pend} sin acceso</span>`:""}</div>
+    <div class="scroll"><table><thead><tr><th>Correo</th><th>Rol</th><th>Pestañas</th></tr></thead><tbody>${S.users.length?S.users.map(u=>{const r=roles.find(x=>x.nombre===u.rol);const t=tabsOfRole(u.rol,r&&r.permisos);
+      return `<tr><td>${esc(u.email)}${u.id===S.session.user.id?' <span class="chip">tú</span>':""}</td><td><select data-urol="${esc(u.id)}" aria-label="Rol de ${esc(u.email)}" ${u.id===S.session.user.id?"disabled":""}>${roles.map(x=>`<option value="${esc(x.nombre)}" ${u.rol===x.nombre?"selected":""}>${esc(ROLE_LABEL(x.nombre))}</option>`).join("")}</select></td>
+      <td class="small">${t.length?t.map(x=>esc(TABS[x].label)).join(" · "):'<span class="chip bad">Sin acceso</span>'}</td></tr>`}).join(""):`<tr><td colspan="3" class="empty">Cargando usuarios…</td></tr>`}</tbody></table></div>
+    <div class="pb small muted" style="padding-top:10px">Para dar de alta a alguien, créalo o invítalo en Supabase → Authentication → Users. Aparece aquí con rol Sin acceso y tú le asignas uno.</div></div>`;
+  const permHtml=!S.rolesDb?`<div class="banner">Para configurar permisos por rol, ejecuta supabase/roles.sql en el SQL Editor de Supabase y recarga la página.</div>`:`<div class="panel"><div class="ph"><div><h3>Permisos por rol</h3>
+      <p class="small muted" style="margin:2px 0 0">El administrador tiene todo y es el único con Usuarios. Las acciones las valida la base de datos, no solo la app.</p></div>
+      <div class="row">${dirty?'<span class="chip warn">Cambios sin guardar</span>':""}<button class="btn" id="pm-def">Valores por defecto</button><button class="btn primary" id="pm-save" ${dirty?"":"disabled"}>Guardar permisos</button></div></div>
+    <div class="scroll"><table><thead><tr><th>Privilegio</th><th style="text-align:center">${esc(ROLE_LABEL("admin"))}</th>${others.map(r=>`<th style="text-align:center">${esc(ROLE_LABEL(r.nombre))}${r.nombre==="sin_acceso"?"":`<div><button class="btn danger" data-rdel="${esc(r.nombre)}" style="padding:2px 6px;font-size:11px" ${S.users.some(u=>u.rol===r.nombre)?'disabled title="Tiene usuarios asignados"':""}>Quitar</button></div>`}</th>`).join("")}</tr></thead>
+    <tbody>${grupos.map(g=>`<tr class="perm-g"><td colspan="${others.length+2}" class="lbl">${esc(g)}</td></tr>`+PRIVS.filter(p=>p.g===g).map(p=>`<tr><td>${esc(p.l)}</td><td style="text-align:center"><input type="checkbox" checked disabled aria-label="${esc(p.l)}: administrador"></td>${others.map(r=>
+      `<td style="text-align:center"><input type="checkbox" data-perm="${esc(r.nombre)}|${p.k}" ${(d[r.nombre]||new Set()).has(p.k)?"checked":""} ${r.nombre==="sin_acceso"?"disabled":""} aria-label="${esc(p.l)}: ${esc(ROLE_LABEL(r.nombre))}"></td>`).join("")}</tr>`).join("")).join("")}
+      <tr><td class="small muted">Acceso</td><td style="text-align:center" class="small">Todo</td>${others.map(r=>{const n=tabsOfRole(r.nombre,[...(d[r.nombre]||[])]).length;return `<td style="text-align:center" class="small">${n?`${n} pestaña${n>1?"s":""}`:'<span style="color:var(--bad);font-weight:600">Sin acceso</span>'}</td>`}).join("")}</tr>
+    </tbody></table></div>
+    <div class="pb"><div class="row"><input type="text" id="role-new" placeholder="Nuevo rol (ej. rh, lider)" aria-label="Nuevo rol" style="flex:1 1 200px"><button class="btn" data-radd>Agregar rol</button></div>
+    <p class="small muted" style="margin:10px 0 0">Dar una acción también da su pestaña; quitar una pestaña quita las acciones que dependen de ella. Un rol sin pestañas no puede entrar a la app.</p></div></div>`;
+  root.innerHTML=usersHtml+permHtml;
 }
 function deepMerge(a,b){const o=Array.isArray(a)?a.slice():Object.assign({},a);Object.keys(b).forEach(k=>{const v=b[k];if(v&&typeof v==="object"&&!Array.isArray(v)&&o[k]&&typeof o[k]==="object"&&!Array.isArray(o[k]))o[k]=deepMerge(o[k],v);else if(v===null)delete o[k];else o[k]=v});return o}
 let cfgChain=Promise.resolve();
@@ -403,22 +439,72 @@ function cfgUpdate(patch){
 /* ---------- routing / render ---------- */
 function renderActive(){
   if(!S.session)return;
-  if(S.tab==="cobertura")renderCobertura();else if(S.tab==="lista")renderLista();else if(S.tab==="personal")renderPersonal();else renderCatalogos();
+  if(!S.tabs||!S.tabs.length)return;
+  if(S.tab==="cobertura")renderCobertura();else if(S.tab==="lista")renderLista();else if(S.tab==="personal")renderPersonal();
+  else if(S.tab==="reportes"){if(window.CPR)window.CPR.render($("#rep-root"))}
+  else if(S.tab==="usuarios")renderUsuarios();else renderCatalogos();
 }
 function setTab(t){
   if(t==="certificaciones"){S.cat="certificaciones";t="catalogos"}else if(t==="ajustes")t="catalogos";
-  if(!VIEWS.includes(t))t="cobertura";
+  const allowed=S.tabs||[];
+  if(!allowed.includes(t))t=allowed[0]||"cobertura";
   S.tab=t;
-  document.querySelectorAll("section.view").forEach(s=>s.hidden=!S.session||s.id!=="v-"+t);
-  document.querySelectorAll("nav.tabs a").forEach(a=>a.setAttribute("aria-current",a.dataset.tab===t?"page":"false"));
+  const show=!!S.session&&allowed.length>0;
+  document.querySelectorAll("section.view").forEach(s=>s.hidden=!show||s.id!=="v-"+t);
+  $("#pagehead").hidden=!show;
+  if(show){$("#pg-title").textContent=TABS[t].label;$("#pg-sub").textContent=TABS[t].sub;$("#datebox").hidden=!["cobertura","lista","personal"].includes(t)}
+  document.querySelectorAll("#tabs [data-tab]").forEach(a=>a.setAttribute("aria-current",a.dataset.tab===t?"page":"false"));
   renderActive();
 }
 function renderBanner(msg){
   let h=msg||"";
-  if(!h&&S.session&&S.perms&&!S.perms.size)h=`<div class="banner">Tu rol solo permite consultar. Si necesitas pasar lista o editar, pídelo al administrador.</div>`;
+  
   $("#banner").innerHTML=h;
 }
 window.addEventListener("hashchange",()=>setTab(location.hash.slice(1)));
+function renderNav(){
+  const pend=S.isAdmin?S.users.filter(u=>u.rol==="sin_acceso").length:0;
+  $("#tabs").innerHTML=(S.tabs||[]).map(t=>`<button data-tab="${t}" aria-current="${S.tab===t?"page":"false"}" title="${esc(TABS[t].label)}" aria-label="${esc(TABS[t].label)}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${TABS[t].icon}</svg><span class="t">${esc(TABS[t].label)}</span>${t==="usuarios"&&pend?`<span class="tab-n" title="${pend} cuenta(s) sin acceso">${pend}</span>`:""}</button>`).join("");
+  $("#who").innerHTML=`<span class="nm" title="${esc(S.session?S.session.user.email:"")}">${esc(S.session?S.session.user.email:"")}</span><span class="role">${esc(ROLE_LABEL(S.rol))}</span>
+    <div class="acts"><button id="chpass" title="Cambiar contraseña" aria-label="Cambiar contraseña"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="8" cy="15" r="4"/><path d="M11 12l9-9M17 6l3 3M15 8l2 2"/></svg><span class="t">Contraseña</span></button>
+    <button id="logout" title="Salir" aria-label="Salir"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 4h4v16h-4M10 8l-4 4 4 4M6 12h10"/></svg><span class="t">Salir</span></button></div>`;
+}
+document.addEventListener("click",e=>{
+  const t=e.target.closest("#tabs [data-tab]");if(t){if(location.hash.slice(1)===t.dataset.tab)setTab(t.dataset.tab);else location.hash=t.dataset.tab;return}
+  if(e.target.closest("#logout"))S.sb.auth.signOut();
+  if(e.target.closest("#chpass"))openChangePassword();
+  if(e.target.closest("#side-toggle"))setMenuCollapsed(!$("#shell").classList.contains("collapsed"));
+});
+function setMenuCollapsed(c){
+  $("#shell").classList.toggle("collapsed",c);const b=$("#side-toggle"),l=c?"Expandir menú":"Contraer menú";
+  b.setAttribute("aria-expanded",String(!c));b.setAttribute("aria-label",l);b.title=l;
+  try{localStorage.setItem("cp_menu_contraido",c?"1":"0")}catch(e){}
+}
+try{if(localStorage.getItem("cp_menu_contraido")==="1")setMenuCollapsed(true)}catch(e){}
+function openChangePassword(){
+  const root=$("#modal-root");
+  root.innerHTML=`<div class="modal-scrim"><div class="panel modal" role="dialog" aria-modal="true" aria-labelledby="cp-t">
+    <div class="ph"><h3 id="cp-t">Cambiar contraseña</h3><button class="btn" id="cp-x">Cancelar</button></div>
+    <form class="pb" id="f-cp" style="display:grid;gap:12px">
+      <div class="field"><label for="cp-1">Nueva contraseña</label><input id="cp-1" type="password" autocomplete="new-password" minlength="8" required></div>
+      <div class="field"><label for="cp-2">Repítela</label><input id="cp-2" type="password" autocomplete="new-password" minlength="8" required></div>
+      <div id="cp-err" style="color:var(--bad);font-size:13px;min-height:1.2em"></div>
+      <div class="row" style="justify-content:flex-end"><button class="btn primary">Guardar</button></div></form></div></div>`;
+  const close=()=>root.innerHTML="";
+  $("#cp-x").onclick=close;$("#cp-1").focus();
+  $("#f-cp").onsubmit=async e=>{e.preventDefault();const err=$("#cp-err"),p=$("#cp-1").value;
+    if(p!==$("#cp-2").value){err.textContent="Las contraseñas no coinciden.";return}
+    const {error}=await S.sb.auth.updateUser({password:p});
+    if(error){err.textContent=/least|weak/i.test(error.message)?"Usa al menos 8 caracteres.":/different|same/i.test(error.message)?"Debe ser distinta de la anterior.":error.message;return}
+    close();toast("Contraseña actualizada")};
+}
+function renderNoAccess(){
+  const el=$("#noaccess");el.hidden=false;
+  el.innerHTML=`<div class="noaccess"><div class="panel"><div class="lbl">Sin acceso</div><h2 style="font-family:var(--f-display);font-size:30px;margin:0">Tu cuenta no tiene acceso</h2>
+    <p class="muted" style="margin:0">La cuenta <b>${esc(S.session.user.email)}</b> existe, pero todavía no tiene un rol en Control de Personal. Pide al administrador que te asigne uno en Usuarios.</p>
+    <div class="row"><button class="btn primary" id="na-retry">Revisar de nuevo</button><button class="btn" id="na-out">Cerrar sesión</button></div></div></div>`;
+  $("#na-retry").onclick=()=>location.reload();$("#na-out").onclick=()=>S.sb.auth.signOut();
+}
 
 /* ---------- events ---------- */
 $("#fecha").value=S.date;
@@ -454,11 +540,6 @@ CV.addEventListener("click",e=>{
   const a=e.target.closest("[data-add]");
   if(a){const k=a.dataset.add;const v=$("#cat-new").value.trim();if(!v)return;
     const arr=cfg()[k]||[];if(arr.includes(v)){toast("Ya existe");return}cfgUpdate({[k]:arr.concat([v])});return}
-  if(e.target.closest("[data-radd]")){addRole();return}
-  const rd=e.target.closest("[data-rdel]");
-  if(rd){
-    if(rd.dataset.confirm!=="1"){rd.dataset.confirm="1";rd.textContent="¿Seguro?";setTimeout(()=>{if(rd.isConnected){rd.dataset.confirm="";rd.textContent="Quitar"}},3000);return}
-    delRole(rd.dataset.rdel);return}
   const d=e.target.closest("[data-ldel],[data-certdel]");
   if(d){
     if(d.dataset.confirm!=="1"){d.dataset.confirm="1";d.textContent="¿Seguro?";setTimeout(()=>{if(d.isConnected){d.dataset.confirm="";d.textContent="Quitar"}},3000);return}
@@ -469,34 +550,52 @@ CV.addEventListener("click",e=>{
     cfgUpdate(patch);
   }
 });
-CV.addEventListener("keydown",e=>{if(e.key==="Enter"&&e.target.id==="cat-new"){const b=CV.querySelector("[data-add]");if(b)b.click()}if(e.key==="Enter"&&e.target.id==="role-new")addRole()});
+CV.addEventListener("keydown",e=>{if(e.key==="Enter"&&e.target.id==="cat-new"){const b=CV.querySelector("[data-add]");if(b)b.click()}});
+const UV=$("#v-usuarios");
+UV.addEventListener("keydown",e=>{if(e.key==="Enter"&&e.target.id==="role-new")addRole()});
+UV.addEventListener("click",async e=>{
+  if(e.target.closest("[data-radd]")){addRole();return}
+  const rd=e.target.closest("[data-rdel]");
+  if(rd){if(rd.dataset.confirm!=="1"){rd.dataset.confirm="1";rd.textContent="¿Seguro?";setTimeout(()=>{if(rd.isConnected){rd.dataset.confirm="";rd.textContent="Quitar"}},3000);return}
+    delRole(rd.dataset.rdel);return}
+  if(e.target.id==="pm-def"){PD=Object.fromEntries(S.roles.filter(r=>r.nombre!=="admin").map(r=>[r.nombre,new Set(ROLE_DEFAULTS[r.nombre]||[])]));renderUsuarios();return}
+  if(e.target.id==="pm-save"){
+    const d=permDraft(),sin=Object.keys(d).filter(r=>r!=="sin_acceso"&&!tabsOfRole(r,[...d[r]]).length);
+    if(sin.length&&e.target.dataset.confirm!=="1"){e.target.dataset.confirm="1";e.target.textContent=`${sin.map(ROLE_LABEL).join(", ")} quedará sin acceso. Clic para confirmar`;return}
+    e.target.disabled=true;
+    for(const r of S.roles.filter(x=>x.nombre!=="admin")){
+      const v=[...(d[r.nombre]||[])];if(v.slice().sort().join(",")===[...(r.permisos||[])].sort().join(","))continue;
+      const {error}=await S.sb.from("roles").update({permisos:v}).eq("nombre",r.nombre);
+      if(error){toast(errMsg(error));e.target.disabled=false;return}
+    }
+    PD=null;await loadRoles();toast("Permisos guardados");renderUsuarios();return}
+});
+UV.addEventListener("change",async e=>{
+  const c=e.target.closest("[data-perm]");
+  if(c){const [r,k]=c.dataset.perm.split("|"),d=permDraft(),set=d[r],p=PRIVS.find(x=>x.k===k);
+    if(c.checked){set.add(k);if(p.tab)set.add("tab:"+p.tab)}else{set.delete(k);if(k.startsWith("tab:"))PRIVS.filter(x=>x.tab===k.slice(4)).forEach(x=>set.delete(x.k))}
+    renderUsuarios();return}
+  const s=e.target.closest("[data-urol]");
+  if(s){const {error}=await S.sb.from("perfiles").update({rol:s.value}).eq("id",s.dataset.urol);
+    if(error)toast(errMsg(error));else{const u=S.users.find(x=>x.id===s.dataset.urol);if(u)u.rol=s.value;toast("Rol actualizado");renderUsuarios();renderNav()}}
+});
 async function addRole(){
   const v=($("#role-new").value||"").trim().toLowerCase();if(!v)return;
   if(S.roles.some(r=>r.nombre===v)){toast("Ese rol ya existe");return}
   const {error}=await S.sb.from("roles").insert({nombre:v,permisos:[]});
   if(error){toast(errMsg(error));return}
-  toast("Rol agregado");await loadRoles();renderActive();
+  toast("Rol agregado");PD=null;await loadRoles();renderActive();
 }
 async function delRole(n){
   const {error}=await S.sb.from("roles").delete().eq("nombre",n);
   if(error){toast(/foreign key|23503/i.test(error.message+error.code)?"No se puede quitar: hay usuarios con ese rol.":errMsg(error));return}
-  toast("Rol quitado");await loadRoles();renderActive();
+  toast("Rol quitado");PD=null;await loadRoles();renderActive();
 }
 CV.addEventListener("change",async e=>{
   const c=e.target.closest("[data-creq]");
   if(c){const p=c.dataset.creq;const vals=[...CV.querySelectorAll("[data-creq]")].filter(x=>x.dataset.creq===p&&x.checked).map(x=>x.value);cfgUpdate({certReq:{[p]:vals}});return}
   const f=e.target.closest("[data-perf]");
   if(f){cfgUpdate({perfiles:{[f.dataset.perf]:{[f.dataset.pf]:f.value.trim()}}});toast("Perfil guardado");return}
-  const rp=e.target.closest("[data-rperm]");
-  if(rp){const n=rp.dataset.rperm;const vals=[...CV.querySelectorAll("[data-rperm]")].filter(x=>x.dataset.rperm===n&&x.checked).map(x=>x.value);
-    const {error}=await S.sb.from("roles").update({permisos:vals}).eq("nombre",n);
-    if(error){toast(errMsg(error));rp.checked=!rp.checked;return}
-    const r=S.roles.find(x=>x.nombre===n);if(r)r.permisos=vals;toast("Permisos de "+n+" actualizados");return}
-  const rds=e.target.closest("[data-rdesc]");
-  if(rds){const {error}=await S.sb.from("roles").update({descripcion:rds.value.trim()}).eq("nombre",rds.dataset.rdesc);if(error)toast(errMsg(error));else toast("Descripción guardada");return}
-  const s=e.target.closest("[data-urol]");
-  if(s){const {error}=await S.sb.from("perfiles").update({rol:s.value}).eq("id",s.dataset.urol);
-    if(error)toast(errMsg(error));else{const u=S.users.find(x=>x.id===s.dataset.urol);if(u)u.rol=s.value;toast("Rol actualizado")}}
 });
 
 /* ---------- auth ---------- */
@@ -511,23 +610,21 @@ $("#lg-reset").addEventListener("click",async()=>{
   const {error}=await S.sb.auth.resetPasswordForEmail(email,{redirectTo:location.origin+location.pathname});
   $("#lg-msg").textContent=error?error.message:"Te enviamos un correo para cambiar tu contraseña.";
 });
-$("#logout").addEventListener("click",()=>S.sb.auth.signOut());
 
 function showLogin(){
   S.session=null;S.emps=new Map();S.att={};S.loaded=false;
   if(S.channel){S.sb.removeChannel(S.channel);S.channel=null}
-  $("#login").hidden=false;$("#who").hidden=true;document.querySelector("nav.tabs").hidden=true;$(".datebox").hidden=true;
+  $("#login").hidden=false;$("#side").hidden=true;$("#noaccess").hidden=true;S.tabs=[];
   renderBanner();setTab(S.tab);
 }
 async function startApp(session){
   if(S.session&&S.session.user.id===session.user.id){S.session=session;return}
   S.session=session;
-  $("#login").hidden=true;$("#who").hidden=false;document.querySelector("nav.tabs").hidden=false;$(".datebox").hidden=false;
-  $("#who-email").textContent=session.user.email;
+  $("#login").hidden=true;
   const {data:perfil}=await S.sb.from("perfiles").select("rol").eq("id",session.user.id).maybeSingle();
-  S.rol=(perfil&&perfil.rol)||"lector";await loadRoles();
-  $("#who-rol").textContent=S.rol;
-  
+  S.rol=(perfil&&perfil.rol)||"sin_acceso";await loadRoles();
+  if(!S.tabs.length){$("#side").hidden=true;renderNoAccess();return}
+  $("#side").hidden=false;renderNav();
   renderBanner();setTab(location.hash.slice(1)||S.tab);
   const [c,e]=await Promise.all([S.sb.from("config").select("data").eq("id",1).maybeSingle(),S.sb.from("empleados").select("*")]);
   if(c.data)S.cfg=Object.assign({},DEFAULT_CFG,c.data.data);
@@ -535,7 +632,7 @@ async function startApp(session){
   S.emps=new Map((e.data||[]).map(r=>[r.num,r]));
   S.loaded=true;refreshSelects();
   await loadAttendance();
-  if(S.isAdmin){const {data}=await S.sb.from("perfiles").select("id,email,rol").order("email");S.users=data||[];renderActive()}
+  if(S.isAdmin){const {data}=await S.sb.from("perfiles").select("id,email,rol").order("email");S.users=data||[];renderNav();renderActive()}
   subscribe();
 }
 async function loadRoles(){
@@ -546,11 +643,14 @@ async function loadRoles(){
 function applyPerms(){
   const r=S.roles.find(x=>x.nombre===S.rol);
   S.isAdmin=S.rol==="admin";
-  S.perms=new Set(S.isAdmin?PERMS.map(p=>p.id):((r&&r.permisos)||[]));
+  S.perms=new Set(S.isAdmin?PERMS.map(p=>p.id):((r&&r.permisos)||[]).filter(x=>!x.startsWith("tab:")));
+  S.tabs=tabsOfRole(S.rol,r&&r.permisos);
   S.canMark=S.perms.has("pasar_lista");S.canPersonal=S.perms.has("editar_personal");
   S.canCatalog=S.perms.has("editar_catalogos");S.canReq=S.perms.has("editar_requeridos");
-  $("#who-rol").textContent=S.rol;
   $("#cov-edit").hidden=!S.canReq;
+  if(S.session&&!$("#side").hidden){
+    if(!S.tabs.length){$("#side").hidden=true;document.querySelectorAll("section.view").forEach(x=>x.hidden=true);$("#pagehead").hidden=true;renderNoAccess();return}
+    renderNav();if(!S.tabs.includes(S.tab))setTab(S.tabs[0])}
   if(!S.canReq&&S.editReq){S.editReq=false;$("#cov-edit").textContent="Editar requeridos";$("#cov-edit").classList.remove("primary")}
   renderBanner();
 }
@@ -568,6 +668,7 @@ function subscribe(){
       const r=p.new&&p.new.num?p.new:p.old;if(!r)return;
       if(p.eventType==="DELETE"){ if(!p.old.fecha||p.old.fecha===S.date)delete S.att[p.old.num]; }
       else if(r.fecha===S.date)S.att[r.num]=r.estado;
+      if(window.CPR)window.CPR.invalidate();
       renderActive();
     })
     .on("postgres_changes",{event:"*",schema:"public",table:"empleados"},p=>{
@@ -580,11 +681,11 @@ function subscribe(){
     .subscribe();
 }
 
+window.CP={S,cfg,active,ST,PRESENT,sitioCorto,turnosUsed,listUsed,missingCerts,toast,renderActive:()=>renderActive()};
 /* ---------- boot ---------- */
 (function boot(){
   const C=window.CP_CONFIG||{};
   if(!window.supabase||!C.supabaseUrl||!C.supabaseAnonKey||/TU-PROYECTO|PEGA/.test(C.supabaseUrl+C.supabaseAnonKey)){
-    document.querySelector("nav.tabs").hidden=true;
     renderBanner(`<div class="banner">Falta configurar la conexión. Edita <b>config.js</b> con la URL y la clave pública (anon key) de tu proyecto de Supabase.</div>`);
     document.querySelectorAll("section.view").forEach(s=>s.hidden=true);
     return;

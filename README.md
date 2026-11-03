@@ -5,6 +5,15 @@ App web para pase de lista por turno, cobertura por área y posición (áreas de
 - **Página:** estática, hospedada en GitHub Pages (`index.html`, `app.js`, `config.js`).
 - **Datos:** Supabase (Postgres) con inicio de sesión. Este repositorio **no contiene datos del personal**.
 
+## Secciones
+
+- **Cobertura, Pase de lista, Personal:** operación diaria.
+- **Reportes:** *Resumen* (asistencia, ausentismo, faltas y retardos, sin registrar; gráficas por día, turno y agrupación por posición, área, sitio, gerente o supervisor; cobertura de posiciones por día; personas con más ausencias) y *Reportes* descargables en Excel o CSV (resumen por día y turno, asistencia detallada, ausentismo por persona, cobertura por día, plantilla, certificaciones). Periodo por día, semana o rango de hasta 62 días.
+- **Catálogos:** perfiles, certificaciones, áreas, sitios, gerentes y turnos.
+- **Usuarios** (solo admin): rol de cada cuenta y **Permisos por rol** (pestañas que ve y acciones que puede hacer).
+
+Este proyecto de Supabase lo comparte la app de Surtido de Línea: las cuentas nuevas entran con rol `sin_acceso` y no ven datos hasta que el administrador les asigna un rol (`supabase/acceso.sql`).
+
 ## Roles
 
 | Rol | Puede |
