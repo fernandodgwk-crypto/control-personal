@@ -9,7 +9,7 @@ const pad=n=>String(n).padStart(2,"0");
 const ymd=d=>d.getFullYear()+"-"+pad(d.getMonth()+1)+"-"+pad(d.getDate());
 const addDays=(s,n)=>{const d=new Date(s+"T12:00:00");d.setDate(d.getDate()+n);return ymd(d)};
 const fmtD=s=>{if(!s)return"";const [y,m,d]=String(s).slice(0,10).split("-");return d+"/"+m+"/"+y};
-const VIEWS=["cobertura","lista","personal","movimientos","vacaciones","te","reportes","catalogos","usuarios","equipos"];
+const VIEWS=["cobertura","lista","personal","movimientos","vacaciones","te","reportes","equipos","s5","catalogos","usuarios"];
 const sitioCorto=x=>String(x||"").replace(/^MX Guadalajara North\s*/i,"")||String(x||"");
 
 const S={sb:null,session:null,rol:"lector",perms:new Set(),sups:[],movs:[],movsLoaded:false,prog:[],progLoaded:false,te:[],teLoaded:false,teFecha:null,recent:{},avisos:[],covScope:null,isAdmin:false,canMark:false,canPersonal:false,canCatalog:false,canReq:false,roles:[],emps:new Map(),cfg:null,att:{},date:ymd(new Date()),
@@ -27,14 +27,16 @@ const TABS={
   lista:{label:"Pase de lista",sub:"Marca la asistencia de cada persona del turno.",icon:'<path d="M9 6h12M9 12h12M9 18h12"/><path d="M3.5 6l1.2 1.2L7 5M3.5 12l1.2 1.2L7 11M3.5 18l1.2 1.2L7 17"/>'},
   personal:{label:"Personal",sub:"Fichas con celular, sitio, a quién reporta y certificaciones.",icon:'<circle cx="9" cy="8" r="3.5"/><path d="M2.5 20c.8-3.5 3.4-5.5 6.5-5.5s5.7 2 6.5 5.5"/><path d="M16 4.5a3.5 3.5 0 010 7M18 14.8c1.9.8 3.1 2.6 3.5 5.2"/>'},
   movimientos:{label:"Movimientos",sub:"Cambios de supervisor: pases y solicitudes de personal con aprobación.",icon:'<path d="M4 8h13l-3-3M20 16H7l3 3"/>'},
-  vacaciones:{label:"Vacaciones y descansos",sub:"Vacaciones, descansos laborados con su descanso compensatorio y control RBA (máximo 6 días seguidos sin descanso).",icon:'<rect x="3" y="4" width="18" height="17" rx="2"/><path d="M3 9h18M8 2v4M16 2v4M8 14h3M8 17h6"/>'},
+  vacaciones:{label:"Vacaciones y descansos",nav:"Vacaciones",sub:"Vacaciones, descansos laborados con su descanso compensatorio y control RBA (máximo 6 días seguidos sin descanso).",icon:'<rect x="3" y="4" width="18" height="17" rx="2"/><path d="M3 9h18M8 2v4M16 2v4M8 14h3M8 17h6"/>'},
   te:{label:"Tiempo extra",sub:"Horas extra por persona con límites por turno y tope semanal RBA, y el recurso sugerido para cubrir con tiempo extra.",icon:'<circle cx="12" cy="13" r="8"/><path d="M12 9v4l2.5 2.5M9 2h6M12 2v3"/>'},
   reportes:{label:"Reportes",sub:"Asistencia, ausentismo y cobertura por periodo, con gráficas y descarga a Excel o CSV.",icon:'<path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/>'},
   catalogos:{label:"Catálogos",sub:"Perfiles, certificaciones, supervisores, áreas, sitios, gerentes y turnos.",icon:'<path d="M4 4h6v6H4zM4 14h6v6H4z"/><path d="M14 6h7M14 9h5M14 16h7M14 19h5"/>'},
-  equipos:{label:"Equipos",sub:"Transpaletas, montacargas y herramientas: registro, checklist diario, reparaciones con Gantt, escalación, owners por turno y revisión semanal.",icon:'<path d="M3 17h11V7H3zM14 11h4l3 3v3h-7"/><circle cx="7" cy="18" r="2"/><circle cx="17" cy="18" r="2"/>'},
+  s5:{label:"Limpieza y 5S",sub:"Checklist 5S por área y turno: Clasificar, Ordenar, Limpiar, Estandarizar y Disciplina, con hallazgos y responsables.",icon:'<path d="M12 3l2.2 4.6 5 .7-3.6 3.5.9 5-4.5-2.4-4.5 2.4.9-5L4.8 8.3l5-.7z"/><path d="M5 21h14"/>'},
+  equipos:{label:"Herramental",sub:"Transpaletas, montacargas y herramientas: registro, checklist diario, reparaciones con Gantt, escalación, owners por turno y revisión semanal.",icon:'<path d="M3 17h11V7H3zM14 11h4l3 3v3h-7"/><circle cx="7" cy="18" r="2"/><circle cx="17" cy="18" r="2"/>'},
   usuarios:{label:"Usuarios",sub:"Quién entra a la app y qué puede hacer cada rol.",icon:'<rect x="4" y="3" width="16" height="18" rx="2"/><circle cx="12" cy="10" r="3"/><path d="M8 17c1-2 2.5-3 4-3s3 1 4 3"/>'}
 };
-const TAB_ORDER=["cobertura","lista","personal","movimientos","vacaciones","te","reportes","catalogos","equipos"];
+const TAB_ORDER=["cobertura","lista","personal","movimientos","vacaciones","te","reportes","equipos","s5","catalogos"];
+const NAV_G={cobertura:"Personal",lista:"Personal",personal:"Personal",movimientos:"Personal",vacaciones:"Personal",te:"Personal",reportes:"Personal",equipos:"Herramental",s5:"Limpieza y 5S",catalogos:"Administración",usuarios:"Administración"};
 const PRIVS=[
   ...TAB_ORDER.map(t=>({k:"tab:"+t,g:"Pestañas que ve",l:TABS[t].label})),
   {k:"pasar_lista",g:"Acciones",l:"Pasar lista (asistencia, retardos, faltas, permisos, vacaciones, incapacidades)",tab:"lista"},
@@ -43,18 +45,20 @@ const PRIVS=[
   {k:"editar_catalogos",g:"Acciones",l:"Editar catálogos (perfiles, supervisores, áreas, sitios, gerentes, turnos, certificaciones)",tab:"catalogos"},
   {k:"equipos_operar",g:"Acciones",l:"Equipos: checklist diario y reportar o dar seguimiento a fallas",tab:"equipos"},
   {k:"equipos_admin",g:"Acciones",l:"Equipos: registro, proveedores, owners por turno, escalación y revisión semanal",tab:"equipos"},
+  {k:"s5_operar",g:"Acciones",l:"5S: hacer el checklist de las áreas y registrar o cerrar hallazgos",tab:"s5"},
+  {k:"s5_admin",g:"Acciones",l:"5S: áreas del programa, responsables, meta y puntos del checklist",tab:"s5"},
   {k:"gestionar_movimientos",g:"Acciones",l:"Pedir y aprobar cambios de supervisor y programar vacaciones de cualquier equipo (gerencia)",tab:"movimientos"}
 ];
 const ROLE_DEFAULTS={
-  supervisor:["tab:cobertura","tab:lista","tab:personal","tab:movimientos","tab:vacaciones","tab:te","tab:reportes","tab:equipos","pasar_lista","equipos_operar"],
-  lector:["tab:cobertura","tab:personal","tab:reportes","tab:equipos"],
+  supervisor:["tab:cobertura","tab:lista","tab:personal","tab:movimientos","tab:vacaciones","tab:te","tab:reportes","tab:equipos","tab:s5","pasar_lista","equipos_operar","s5_operar"],
+  lector:["tab:cobertura","tab:personal","tab:reportes","tab:equipos","tab:s5"],
   sin_acceso:[]
 };
 const ROLE_LABEL=r=>({admin:"Administrador",supervisor:"Supervisor",lector:"Lector",sin_acceso:"Sin acceso"})[r]||r;
 const DEFAULT_ROLES=[{nombre:"admin",permisos:PERMS.map(p=>p.id)},{nombre:"supervisor",permisos:ROLE_DEFAULTS.supervisor},{nombre:"lector",permisos:ROLE_DEFAULTS.lector}];
 // Pestañas de un rol. Roles creados antes de que existieran permisos de pestaña ven todo menos Usuarios.
 function tabsOfRole(nombre,permisos){
-  if(nombre==="admin")return [...TAB_ORDER.filter(t=>t!=="equipos"),"usuarios","equipos"];
+  if(nombre==="admin")return [...TAB_ORDER,"usuarios"];
   if(nombre==="sin_acceso")return [];
   const p=permisos||[];
   if(!p.some(x=>x.startsWith("tab:")))return TAB_ORDER.slice();
@@ -705,7 +709,7 @@ function openAvisos(){
   root.innerHTML=`<div class="modal-scrim"><div class="panel modal" role="dialog" aria-modal="true" aria-labelledby="av-t" style="width:min(560px,100%)">
     <div class="ph"><h3 id="av-t">Avisos</h3><div class="row">${list.some(a=>!a.leido)?'<button class="btn" id="av-all">Marcar todo como leído</button>':""}<button class="btn" id="av-x">Cerrar</button></div></div>
     <div style="max-height:70vh;overflow:auto">${list.length?list.map(a=>`<div style="padding:12px 16px;border-bottom:1px solid var(--line);${a.leido?"opacity:.65":""}">
-      <div class="row" style="justify-content:space-between"><b style="font-weight:600">${a.leido?"":'<span style="color:var(--accent)">● </span>'}${esc(a.titulo)}</b><span class="chip ${a.tipo==="rba"||a.tipo==="equipo"?"bad":a.tipo==="vacaciones"?"info":"warn"}">${({rba:"RBA",vacaciones:"Vacaciones",equipo:"Equipo",descanso_laborado:"Descanso laborado",te:"Tiempo extra"})[a.tipo]||a.tipo}</span></div>
+      <div class="row" style="justify-content:space-between"><b style="font-weight:600">${a.leido?"":'<span style="color:var(--accent)">● </span>'}${esc(a.titulo)}</b><span class="chip ${a.tipo==="rba"||a.tipo==="equipo"?"bad":a.tipo==="vacaciones"?"info":"warn"}">${({rba:"RBA",vacaciones:"Vacaciones",equipo:"Equipo",descanso_laborado:"Descanso laborado",te:"Tiempo extra","5s":"5S"})[a.tipo]||a.tipo}</span></div>
       <div class="small" style="margin-top:4px">${esc(a.detalle)}</div><div class="small muted" style="margin-top:2px">${fmtTs(a.creado)}</div></div>`).join(""):'<div class="empty">No tienes avisos.</div>'}</div></div></div>`;
   $("#av-x").onclick=()=>root.innerHTML="";
   const all=$("#av-all");if(all)all.onclick=async()=>{const ids=S.avisos.filter(a=>!a.leido).map(a=>a.id);const {error}=await S.sb.from("avisos").update({leido:true}).in("id",ids);if(error){toast(errMsg(error));return}S.avisos.forEach(a=>a.leido=true);renderNav();openAvisos()};
@@ -851,7 +855,7 @@ function renderActive(){
   if(!S.tabs||!S.tabs.length)return;
   if(S.tab==="cobertura")renderCobertura();else if(S.tab==="lista")renderLista();else if(S.tab==="personal")renderPersonal();
   else if(S.tab==="reportes"){if(window.CPR)window.CPR.render($("#rep-root"))}
-  else if(S.tab==="usuarios")renderUsuarios();else if(S.tab==="movimientos")renderMovimientos();else if(S.tab==="vacaciones")renderVacaciones();else if(S.tab==="te")renderTE();else if(S.tab==="equipos"){if(window.CPE)window.CPE.render($("#eq-root"))}else renderCatalogos();
+  else if(S.tab==="usuarios")renderUsuarios();else if(S.tab==="movimientos")renderMovimientos();else if(S.tab==="vacaciones")renderVacaciones();else if(S.tab==="te")renderTE();else if(S.tab==="equipos"){if(window.CPE)window.CPE.render($("#eq-root"))}else if(S.tab==="s5"){if(window.CP5)window.CP5.render($("#s5-root"))}else renderCatalogos();
 }
 function setTab(t){
   if(t==="certificaciones"){S.cat="certificaciones";t="catalogos"}else if(t==="ajustes")t="catalogos";
@@ -873,7 +877,8 @@ function renderBanner(msg){
 window.addEventListener("hashchange",()=>setTab(location.hash.slice(1)));
 function renderNav(){
   const pend=S.isAdmin?S.users.filter(u=>u.rol==="sin_acceso").length:0;
-  $("#tabs").innerHTML=(S.tabs||[]).map(t=>`<button data-tab="${t}" aria-current="${S.tab===t?"page":"false"}" title="${esc(TABS[t].label)}" aria-label="${esc(TABS[t].label)}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${TABS[t].icon}</svg><span class="t">${esc(TABS[t].label)}</span>${t==="usuarios"&&pend?`<span class="tab-n" title="${pend} cuenta(s) sin acceso">${pend}</span>`:""}${t==="movimientos"&&pendingToApprove()?`<span class="tab-n" title="Por aprobar">${pendingToApprove()}</span>`:""}</button>`).join("");
+  let lastG="";
+  $("#tabs").innerHTML=(S.tabs||[]).map(t=>{const g=NAV_G[t]||"";const hd=g!==lastG?`<div class="nav-g">${esc(g)}</div>`:"";lastG=g;return hd+`<button data-tab="${t}" aria-current="${S.tab===t?"page":"false"}" title="${esc(TABS[t].label)}" aria-label="${esc(TABS[t].label)}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${TABS[t].icon}</svg><span class="t">${esc(TABS[t].nav||TABS[t].label)}</span>${t==="usuarios"&&pend?`<span class="tab-n" title="${pend} cuenta(s) sin acceso">${pend}</span>`:""}${t==="movimientos"&&pendingToApprove()?`<span class="tab-n" title="Por aprobar">${pendingToApprove()}</span>`:""}</button>`}).join("");
   $("#who").innerHTML=`<span class="nm" title="${esc(S.session?S.session.user.email:"")}">${esc(S.session?S.session.user.email:"")}</span><span class="role">${esc(ROLE_LABEL(S.rol))}</span>
     <div class="acts"><button id="avisos" title="Avisos" aria-label="Avisos${S.avisos.filter(a=>!a.leido).length?": "+S.avisos.filter(a=>!a.leido).length+" sin leer":""}" style="position:relative"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 8a6 6 0 0112 0c0 7 3 9 3 9H3s3-2 3-9M10.3 21a1.9 1.9 0 003.4 0"/></svg><span class="t">Avisos</span>${S.avisos.filter(a=>!a.leido).length?`<span class="tab-n" style="margin-left:4px">${S.avisos.filter(a=>!a.leido).length}</span>`:""}</button>
     <button id="chpass" title="Cambiar contraseña" aria-label="Cambiar contraseña"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="8" cy="15" r="4"/><path d="M11 12l9-9M17 6l3 3M15 8l2 2"/></svg><span class="t">Contraseña</span></button>

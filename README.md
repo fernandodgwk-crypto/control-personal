@@ -7,6 +7,8 @@ App web para pase de lista por turno, cobertura por área y posición (áreas de
 
 ## Secciones
 
+El menú está agrupado en las tres áreas que administra la app: **Personal** (Cobertura, Pase de lista, Personal, Movimientos, Vacaciones, Tiempo extra, Reportes), **Herramental** (equipos y su checklist) y **Limpieza y 5S** (checklist de las áreas), más **Administración** (Catálogos, Usuarios).
+
 - **Cobertura, Pase de lista, Personal:** operación diaria.
 - **Reportes:** *Resumen* (asistencia, ausentismo, faltas y retardos, sin registrar; gráficas por día, turno y agrupación por posición, área, sitio, gerente o supervisor; cobertura de posiciones por día; personas con más ausencias) y *Reportes* descargables en Excel o CSV (resumen por día y turno, asistencia detallada, ausentismo por persona, cobertura por día, plantilla, certificaciones). Periodo por día, semana o rango de hasta 62 días.
 - **Movimientos:** cambio de supervisor con aprobación.
@@ -20,7 +22,8 @@ App web para pase de lista por turno, cobertura por área y posición (áreas de
 - **Back:** cada supervisor asigna en Pase de lista el correo de su suplente; ese back puede pasar lista a su equipo y programar sus vacaciones (lo valida la base).
 - **Cobertura:** filtro por supervisor; por defecto muestra *Mi personal* (equipos de los que eres supervisor o back); con *Todos* ves el área completa.
 - **Catálogos:** perfiles, certificaciones, **supervisores** (cada uno ligado por correo a su cuenta, que es la que aprueba), áreas, sitios, gerentes y turnos.
-- **Equipos** (transpaletas eléctricas y estándar, montacargas y herramientas): *Tablero* (disponibilidad, críticos fuera de servicio con su nivel de escalación, owners de la semana, incidencias por mes y tipo de falla), *Equipos* (código, serial, marca, modelo, área, funcionalidad), *Checklist* diario por turno con puntos por tipo de equipo (una falla se puede reportar como incidencia), *Reparaciones* en lista y Gantt (estatus, fecha compromiso, cierre), *Revisión semanal* (pendientes, vencidos, cumplimiento del checklist y acuerdos), *Owners por turno* con rotación, *Proveedores* (contacto y proceso de atención) y *Escalación y ajustes*. Al reportar una falla se avisa al admin, a los owners de la semana y a los correos configurados. Permisos: `equipos_operar` (checklist y fallas) y `equipos_admin` (registro y configuración). Base: `supabase/equipos.sql`.
+- **Herramental** (antes *Equipos*: transpaletas eléctricas y estándar, montacargas y herramientas): *Tablero* (disponibilidad, críticos fuera de servicio con su nivel de escalación, owners de la semana, incidencias por mes y tipo de falla), *Equipos* (código, serial, marca, modelo, área, funcionalidad), *Checklist* diario por turno con puntos por tipo de equipo (una falla se puede reportar como incidencia), *Reparaciones* en lista y Gantt (estatus, fecha compromiso, cierre), *Revisión semanal* (pendientes, vencidos, cumplimiento del checklist y acuerdos), *Owners por turno* con rotación, *Proveedores* (contacto y proceso de atención) y *Escalación y ajustes*. Al reportar una falla se avisa al admin, a los owners de la semana y a los correos configurados. Permisos: `equipos_operar` (checklist y fallas) y `equipos_admin` (registro y configuración). Base: `supabase/equipos.sql`.
+- **Limpieza y 5S:** checklist por área, fecha y turno con los puntos de cada S (Clasificar, Ordenar, Limpiar, Estandarizar, Disciplina), respuesta Sí / No / N/A y puntaje = Sí ÷ (Sí + No). Cada "No" puede abrir un *hallazgo* con responsable y fecha compromiso; para cerrarlo se pide nota de cierre. *Tablero* con cumplimiento por S, tendencia semanal y semáforo por área. En *Responsables y ajustes* se eligen las áreas del programa, el responsable (supervisor) de cada una, la meta (85 % inicial), los correos a notificar y los puntos del checklist. Avisos al admin y al responsable del área por cada hallazgo y cuando un checklist queda debajo de la meta. Permisos: `s5_operar` (hacer checklist y hallazgos) y `s5_admin` (ajustes). Base: `supabase/limpieza_5s.sql`.
 - **Usuarios** (solo admin): rol de cada cuenta y **Permisos por rol** (pestañas que ve y acciones que puede hacer).
 
 Este proyecto de Supabase lo comparte la app de Surtido de Línea: las cuentas nuevas entran con rol `sin_acceso` y no ven datos hasta que el administrador les asigna un rol (aplicado; ver `supabase/admin_y_catalogos.sql`).
@@ -66,5 +69,8 @@ Este proyecto de Supabase lo comparte la app de Surtido de Línea: las cuentas n
 index.html            interfaz
 app.js                lógica y conexión a Supabase
 config.js             URL y anon key del proyecto
-supabase/schema.sql   tablas, roles, reglas de acceso y catálogos iniciales
+reportes.js           resumen, gráficas y reportes
+equipos.js            herramental
+s5.js                 limpieza y 5S
+supabase/*.sql        tablas, roles, reglas de acceso y catálogos (schema.sql primero, luego cada módulo)
 ```
