@@ -9,10 +9,10 @@ const pad=n=>String(n).padStart(2,"0");
 const ymd=d=>d.getFullYear()+"-"+pad(d.getMonth()+1)+"-"+pad(d.getDate());
 const addDays=(s,n)=>{const d=new Date(s+"T12:00:00");d.setDate(d.getDate()+n);return ymd(d)};
 const fmtD=s=>{if(!s)return"";const [y,m,d]=String(s).slice(0,10).split("-");return d+"/"+m+"/"+y};
-const VIEWS=["cobertura","lista","personal","movimientos","vacaciones","reportes","catalogos","usuarios","equipos"];
+const VIEWS=["cobertura","lista","personal","movimientos","vacaciones","te","reportes","catalogos","usuarios","equipos"];
 const sitioCorto=x=>String(x||"").replace(/^MX Guadalajara North\s*/i,"")||String(x||"");
 
-const S={sb:null,session:null,rol:"lector",perms:new Set(),sups:[],movs:[],movsLoaded:false,prog:[],progLoaded:false,recent:{},avisos:[],covScope:null,isAdmin:false,canMark:false,canPersonal:false,canCatalog:false,canReq:false,roles:[],emps:new Map(),cfg:null,att:{},date:ymd(new Date()),
+const S={sb:null,session:null,rol:"lector",perms:new Set(),sups:[],movs:[],movsLoaded:false,prog:[],progLoaded:false,te:[],teLoaded:false,teFecha:null,recent:{},avisos:[],covScope:null,isAdmin:false,canMark:false,canPersonal:false,canCatalog:false,canReq:false,roles:[],emps:new Map(),cfg:null,att:{},date:ymd(new Date()),
   tab:"cobertura",dim:"posicion",editReq:false,sel:null,loaded:false,channel:null,users:[],cat:"perfiles"};
 try{const d=localStorage.getItem("cp_dim");if(d)S.dim=d;const c=localStorage.getItem("cp_cat");if(c)S.cat=c;}catch(e){}
 
@@ -28,12 +28,13 @@ const TABS={
   personal:{label:"Personal",sub:"Fichas con celular, sitio, a quién reporta y certificaciones.",icon:'<circle cx="9" cy="8" r="3.5"/><path d="M2.5 20c.8-3.5 3.4-5.5 6.5-5.5s5.7 2 6.5 5.5"/><path d="M16 4.5a3.5 3.5 0 010 7M18 14.8c1.9.8 3.1 2.6 3.5 5.2"/>'},
   movimientos:{label:"Movimientos",sub:"Cambios de supervisor: pases y solicitudes de personal con aprobación.",icon:'<path d="M4 8h13l-3-3M20 16H7l3 3"/>'},
   vacaciones:{label:"Vacaciones y descansos",sub:"Vacaciones, descansos laborados con su descanso compensatorio y control RBA (máximo 6 días seguidos sin descanso).",icon:'<rect x="3" y="4" width="18" height="17" rx="2"/><path d="M3 9h18M8 2v4M16 2v4M8 14h3M8 17h6"/>'},
+  te:{label:"Tiempo extra",sub:"Horas extra por persona con límites por turno y tope semanal RBA, y el recurso sugerido para cubrir con tiempo extra.",icon:'<circle cx="12" cy="13" r="8"/><path d="M12 9v4l2.5 2.5M9 2h6M12 2v3"/>'},
   reportes:{label:"Reportes",sub:"Asistencia, ausentismo y cobertura por periodo, con gráficas y descarga a Excel o CSV.",icon:'<path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/>'},
   catalogos:{label:"Catálogos",sub:"Perfiles, certificaciones, supervisores, áreas, sitios, gerentes y turnos.",icon:'<path d="M4 4h6v6H4zM4 14h6v6H4z"/><path d="M14 6h7M14 9h5M14 16h7M14 19h5"/>'},
   equipos:{label:"Equipos",sub:"Transpaletas, montacargas y herramientas: registro, checklist diario, reparaciones con Gantt, escalación, owners por turno y revisión semanal.",icon:'<path d="M3 17h11V7H3zM14 11h4l3 3v3h-7"/><circle cx="7" cy="18" r="2"/><circle cx="17" cy="18" r="2"/>'},
   usuarios:{label:"Usuarios",sub:"Quién entra a la app y qué puede hacer cada rol.",icon:'<rect x="4" y="3" width="16" height="18" rx="2"/><circle cx="12" cy="10" r="3"/><path d="M8 17c1-2 2.5-3 4-3s3 1 4 3"/>'}
 };
-const TAB_ORDER=["cobertura","lista","personal","movimientos","vacaciones","reportes","catalogos","equipos"];
+const TAB_ORDER=["cobertura","lista","personal","movimientos","vacaciones","te","reportes","catalogos","equipos"];
 const PRIVS=[
   ...TAB_ORDER.map(t=>({k:"tab:"+t,g:"Pestañas que ve",l:TABS[t].label})),
   {k:"pasar_lista",g:"Acciones",l:"Pasar lista (asistencia, retardos, faltas, permisos, vacaciones, incapacidades)",tab:"lista"},
@@ -45,7 +46,7 @@ const PRIVS=[
   {k:"gestionar_movimientos",g:"Acciones",l:"Pedir y aprobar cambios de supervisor y programar vacaciones de cualquier equipo (gerencia)",tab:"movimientos"}
 ];
 const ROLE_DEFAULTS={
-  supervisor:["tab:cobertura","tab:lista","tab:personal","tab:movimientos","tab:vacaciones","tab:reportes","tab:equipos","pasar_lista","equipos_operar"],
+  supervisor:["tab:cobertura","tab:lista","tab:personal","tab:movimientos","tab:vacaciones","tab:te","tab:reportes","tab:equipos","pasar_lista","equipos_operar"],
   lector:["tab:cobertura","tab:personal","tab:reportes","tab:equipos"],
   sin_acceso:[]
 };
@@ -95,7 +96,7 @@ function refreshSelects(){
   const sit=listUsed("sitios","sitio");
   ["#cov-sitio","#l-sitio","#p-sitio"].forEach(id=>fillSelect($(id),sit,"Todos los sitios",sitioCorto));
   fillSelect($("#p-ger"),listUsed("gerentes","gerente"),"Todos los gerentes");
-  const sups=supsUsed();fillSelect($("#p-sup"),sups,"Todos los supervisores");
+  const sups=supsUsed();fillSelect($("#p-sup"),sups,"Todos los supervisores");fillSelect($("#cov-sup"),sups,"Todos los supervisores");
   const ls=verTodos()?sups:mySups();fillSelect($("#l-sup"),ls,ls.length>1||verTodos()?"Todos mis equipos":null);$("#l-sup").hidden=!verTodos()&&ls.length<2;
   if(verTodos())$("#l-sup").options[0].text="Todos los supervisores";
   fillSelect($("#p-cargo"),["Supervisores","Gerentes","Operativos"],"Todos los cargos");
@@ -114,7 +115,7 @@ const myEmail=()=>((S.session&&S.session.user.email)||"").toLowerCase();
 const mySups=()=>S.sups.filter(x=>x.activo!==false&&x.email&&x.email.toLowerCase()===myEmail()).map(x=>x.nombre);
 function listUsed(k,f){const c=(cfg()[k]||[]).slice();active().forEach(e=>{if(e[f]&&!c.includes(e[f]))c.push(e[f])});return c}
 const covMine=()=>{if(S.covScope===null)S.covScope=myTeams().length?"mi":"todos";return S.covScope==="mi"};
-const covBase=()=>{const st=$("#cov-sitio").value,mi=covMine(),t=myTeams();return active().filter(e=>(!st||e.sitio===st)&&(!mi||t.includes(e.supervisor)))};
+const covBase=()=>{const st=$("#cov-sitio").value,sp=$("#cov-sup").value,mi=covMine()&&!sp,t=myTeams();return active().filter(e=>(!st||e.sitio===st)&&(!sp||e.supervisor===sp)&&(!mi||t.includes(e.supervisor)))};
 
 /* ---------- coverage ---------- */
 function coverage(){
@@ -170,6 +171,8 @@ function renderCobertura(){
       const out=c.aus.concat(c.pend);
       if(out.length){h+=`<ul>`+out.map(e=>{const s=markOf(e);return `<li><span>${esc(e.nombre)} <span class="chip ${s?"bad":"warn"}">${s?ST[s]:"Sin registrar"}</span></span><span class="small muted">${esc(e.posicion||"")}</span></li>`}).join("")+`</ul>`}
       else h+=`<span class="muted" style="font-size:13px">No hay personas asignadas suficientes para el requerido.</span>`;
+      const sg=sugeridosTE(e=>(S.dim==="area"?e.area:e.posicion)===c.k&&e.turno!==c.t,S.date).slice(0,3);
+      h+=`<div class="small" style="border-top:1px dashed var(--line);padding-top:6px"><b>Recurso a considerar para T.E.:</b> ${sg.length?sg.map(x=>`${esc(x.e.nombre)} <span class="muted">(${esc(turnoCorto(x.e.turno))} · ${x.disp} h disp.)</span>`).join(", "):'<span class="muted">nadie disponible sin rebasar límites</span>'}</div>`;
       h+=`</div>`;
     });
     certW.forEach(c=>{
@@ -445,6 +448,7 @@ async function renameCatalog(key,old,nu){
     const nc=JSON.parse(JSON.stringify(C));Object.assign(nc,patch);
     if(key==="areas"){nc.areaSitio=renKeys(C.areaSitio,old,nu);nc.req=Object.assign({},C.req,{area:renKeys((C.req||{}).area,old,nu,true)})}
     if(key==="posiciones"){nc.perfiles=renKeys(C.perfiles,old,nu);nc.certReq=renKeys(C.certReq,old,nu);nc.req=Object.assign({},C.req,{posicion:renKeys((C.req||{}).posicion,old,nu,true)})}
+    if(key==="turnos"&&C.te&&C.te.turnos){nc.te=Object.assign({},C.te,{turnos:renKeys(C.te.turnos,old,nu)})}
     if(key==="turnos"){["area","posicion"].forEach(dm=>{const r=(C.req||{})[dm]||{},o={};Object.keys(r).forEach(k=>{o[k.endsWith("__"+old)?k.slice(0,-old.length)+nu:k]=r[k]});nc.req=Object.assign({},nc.req||C.req,{[dm]:o})})}
     if(key==="certs"){const cr={};Object.keys(C.certReq||{}).forEach(p=>cr[p]=(C.certReq[p]||[]).map(x=>x===old?nu:x));nc.certReq=cr}
     S.cfg=nc;const {error:e2}=await S.sb.from("config").upsert({id:1,data:nc});if(e2){toast(errMsg(e2));return}
@@ -701,11 +705,107 @@ function openAvisos(){
   root.innerHTML=`<div class="modal-scrim"><div class="panel modal" role="dialog" aria-modal="true" aria-labelledby="av-t" style="width:min(560px,100%)">
     <div class="ph"><h3 id="av-t">Avisos</h3><div class="row">${list.some(a=>!a.leido)?'<button class="btn" id="av-all">Marcar todo como leído</button>':""}<button class="btn" id="av-x">Cerrar</button></div></div>
     <div style="max-height:70vh;overflow:auto">${list.length?list.map(a=>`<div style="padding:12px 16px;border-bottom:1px solid var(--line);${a.leido?"opacity:.65":""}">
-      <div class="row" style="justify-content:space-between"><b style="font-weight:600">${a.leido?"":'<span style="color:var(--accent)">● </span>'}${esc(a.titulo)}</b><span class="chip ${a.tipo==="rba"||a.tipo==="equipo"?"bad":a.tipo==="vacaciones"?"info":"warn"}">${({rba:"RBA",vacaciones:"Vacaciones",equipo:"Equipo",descanso_laborado:"Descanso laborado"})[a.tipo]||a.tipo}</span></div>
+      <div class="row" style="justify-content:space-between"><b style="font-weight:600">${a.leido?"":'<span style="color:var(--accent)">● </span>'}${esc(a.titulo)}</b><span class="chip ${a.tipo==="rba"||a.tipo==="equipo"?"bad":a.tipo==="vacaciones"?"info":"warn"}">${({rba:"RBA",vacaciones:"Vacaciones",equipo:"Equipo",descanso_laborado:"Descanso laborado",te:"Tiempo extra"})[a.tipo]||a.tipo}</span></div>
       <div class="small" style="margin-top:4px">${esc(a.detalle)}</div><div class="small muted" style="margin-top:2px">${fmtTs(a.creado)}</div></div>`).join(""):'<div class="empty">No tienes avisos.</div>'}</div></div></div>`;
   $("#av-x").onclick=()=>root.innerHTML="";
   const all=$("#av-all");if(all)all.onclick=async()=>{const ids=S.avisos.filter(a=>!a.leido).map(a=>a.id);const {error}=await S.sb.from("avisos").update({leido:true}).in("id",ids);if(error){toast(errMsg(error));return}S.avisos.forEach(a=>a.leido=true);renderNav();openAvisos()};
 }
+
+/* ---------- Tiempo extra ---------- */
+const turnoCorto=t=>String(t||"").replace(/\s*\(.*\)\s*$/,"")||t;
+const teCfg=()=>Object.assign({rbaSemana:60,turnos:{}},cfg().te||{});
+const teLim=t=>Object.assign({jornada:8,maxDia:3,maxSemana:9},(teCfg().turnos||{})[t]||{});
+function semanaDe(f){const d=new Date(f+"T12:00:00");const lun=addDays(f,-((d.getDay()+6)%7));return{ini:lun,fin:addDays(lun,6)}}
+const teRow=(num,f)=>S.te.find(r=>r.num===num&&r.fecha===f);
+function teSem(num,f){const w=semanaDe(f);return S.te.filter(r=>r.num===num&&r.fecha>=w.ini&&r.fecha<=w.fin).reduce((a,r)=>a+Number(r.horas),0)}
+function trabajo(num,f){const m=S.recent[num]||{};const s=m[f]||(f===S.date?S.att[num]:null);return s==="A"||s==="R"}
+function diasSem(num,f){const w=semanaDe(f);let n=0;for(let d=w.ini;d<=w.fin;d=addDays(d,1))if(trabajo(num,d))n++;return n}
+function teInfo(e,f){const L=teLim(e.turno),rba=Number(teCfg().rbaSemana)||60;const hoy=Number((teRow(e.num,f)||{}).horas||0),sem=teSem(e.num,f);
+  const dias=diasSem(e.num,f)+(trabajo(e.num,f)?0:1);const total=dias*L.jornada+sem;
+  const disp=Math.max(0,Math.min(L.maxDia-hoy,L.maxSemana-sem,rba-total));
+  return{L,rba,hoy,sem,dias,total,disp:Math.round(disp*2)/2}}
+function sugeridosTE(fil,f){
+  return active().filter(e=>e.turno&&fil(e)&&trabajo(e.num,f)&&!progOn(e.num,f).vac&&streakAt(e.num,f)<6)
+    .map(e=>Object.assign({e},teInfo(e,f))).filter(x=>x.disp>0).sort((a,b)=>a.sem-b.sem||b.disp-a.disp);
+}
+const canTE=e=>canMarkFor(e)||S.perms.has("gestionar_movimientos");
+async function loadTE(){const {data,error}=await S.sb.from("tiempo_extra").select("*").gte("fecha",addDays(ymd(new Date()),-63)).order("fecha");S.te=error?[]:(data||[]);S.teLoaded=true;renderActive()}
+function renderTE(){
+  const root=$("#te-root");if(!S.teLoaded){root.innerHTML='<div class="panel empty">Cargando…</div>';return}
+  if(!S.teFecha)S.teFecha=S.date;
+  const f=S.teFecha,w=semanaDe(f),T=turnosUsed(),tc=teCfg(),ed=S.canCatalog;
+  const ft=S.teTurno||"",fs=S.teSup||"";
+  const base=active().filter(e=>e.turno&&(verTodos()||myTeams().includes(e.supervisor))&&(!ft||e.turno===ft)&&(!fs||e.supervisor===fs));
+  const dias=[];for(let d=w.ini;d<=w.fin;d=addDays(d,1))dias.push(d);
+  const sg=sugeridosTE(e=>base.includes(e),f).slice(0,15);
+  const rows=base.map(e=>Object.assign({e},teInfo(e,f))).sort((a,b)=>b.sem-a.sem||a.e.nombre.localeCompare(b.e.nombre));
+  const totTE=rows.reduce((a,x)=>a+x.sem,0),cerca=rows.filter(x=>x.sem>=x.L.maxSemana*0.8||x.total>=x.rba*0.9);
+  root.innerHTML=`
+  <div class="filters">
+    <div class="fld"><label for="te-f">Fecha</label><input type="date" id="te-f" value="${f}"></div>
+    <div class="fld"><label for="te-t">Turno</label><select id="te-t"><option value="">Todos</option>${T.map(t=>`<option ${ft===t?"selected":""}>${esc(t)}</option>`).join("")}</select></div>
+    <div class="fld"><label for="te-s">Supervisor</label><select id="te-s"><option value="">Todos</option>${(verTodos()?supsUsed():myTeams()).map(x=>`<option ${fs===x?"selected":""}>${esc(x)}</option>`).join("")}</select></div>
+    <span style="flex:1"></span>${base.some(canTE)?'<button class="btn primary" data-tenew>Registrar tiempo extra</button>':""}</div>
+  <div class="kpis">
+    <div class="panel kpi"><div class="lbl">Tiempo extra en la semana</div><div class="val">${fmtH(totTE)} h</div><div class="hint">${fmtD(w.ini)} – ${fmtD(w.fin)} · ${rows.filter(x=>x.sem>0).length} personas</div></div>
+    <div class="panel kpi"><div class="lbl">Cerca del límite</div><div class="val" style="${cerca.length?"color:var(--warn)":""}">${cerca.length}</div><div class="hint">≥80% del máximo de T.E. o ≥90% del tope RBA</div></div>
+    <div class="panel kpi"><div class="lbl">Disponibles hoy para T.E.</div><div class="val">${sugeridosTE(e=>base.includes(e),f).length}</div><div class="hint">Asistieron, sin vacaciones ni riesgo RBA</div></div>
+    <div class="panel kpi"><div class="lbl">Tope RBA</div><div class="val">${tc.rbaSemana} h</div><div class="hint">por semana: jornada + tiempo extra</div></div>
+  </div>
+  <div class="panel" style="padding:0"><div class="ph"><h3>Recurso a considerar para T.E.</h3><span class="small muted">${fmtD(f)} · asistieron, sin vacaciones, menos de 6 días seguidos y con horas disponibles. Primero quien lleva menos T.E.</span></div><div class="scroll"><table><thead><tr><th>Persona</th><th>Turno</th><th>Posición</th><th class="num">T.E. semana</th><th class="num">Horas semana</th><th class="num">Disponible hoy</th><th></th></tr></thead><tbody>${
+    sg.length?sg.map(x=>`<tr><td>${esc(x.e.nombre)}<div class="small muted">${esc(x.e.supervisor||"")}</div></td><td class="small">${esc(turnoCorto(x.e.turno))}</td><td class="small">${esc(x.e.posicion||"")}</td><td class="num">${fmtH(x.sem)} / ${x.L.maxSemana}</td><td class="num">${fmtH(x.total)} / ${x.rba}</td><td class="num"><b style="color:var(--ok)">${fmtH(x.disp)} h</b></td><td>${canTE(x.e)?`<button class="btn" data-tenew="${esc(x.e.num)}">Asignar</button>`:""}</td></tr>`).join("")
+    :`<tr><td colspan="7" class="empty">Nadie disponible con los filtros elegidos: falta pasar lista o todos están en su límite.</td></tr>`}</tbody></table></div></div>
+  <div class="panel" style="padding:0"><div class="ph"><h3>Registro de la semana</h3><span class="small muted">Horas extra por día · clic en una persona para registrar</span></div><div class="scroll"><table><thead><tr><th>Persona</th>${dias.map(d=>`<th class="num">${esc(new Date(d+"T12:00:00").toLocaleDateString("es-MX",{weekday:"short",day:"numeric"}))}</th>`).join("")}<th class="num">Total T.E.</th><th class="num">Horas semana</th><th>Estado</th></tr></thead><tbody>${
+    rows.length?rows.map(x=>{const st=x.sem>x.L.maxSemana||x.total>x.rba?["Excede","bad"]:x.sem>=x.L.maxSemana||x.total>=x.rba?["Al límite","bad"]:x.sem>=x.L.maxSemana*0.8||x.total>=x.rba*0.9?["Cerca del límite","warn"]:x.sem>0?["OK","ok"]:["Sin T.E.",""];
+      return `<tr class="${canTE(x.e)?"click":""}" data-teper="${esc(x.e.num)}"><td>${esc(x.e.nombre)}<div class="small muted">${esc(turnoCorto(x.e.turno))} · ${esc(x.e.posicion||"")}</div></td>${dias.map(d=>{const r=teRow(x.e.num,d);return `<td class="num">${r?`<b>${fmtH(r.horas)}</b>`:'<span class="muted">·</span>'}</td>`}).join("")}
+      <td class="num"><b>${fmtH(x.sem)}</b> / ${x.L.maxSemana}</td><td class="num">${fmtH(x.total)} / ${x.rba}</td><td><span class="chip ${st[1]}">${st[0]}</span></td></tr>`}).join("")
+    :`<tr><td colspan="${dias.length+4}" class="empty">Sin personal con estos filtros.</td></tr>`}</tbody></table></div>
+    <div class="pb small muted">Horas semana = días trabajados (asistencia o retardo) × jornada del turno + tiempo extra. Para hoy, si aún no tiene asistencia, se cuenta como día trabajado.</div></div>
+  <div class="panel" style="padding:0"><div class="ph"><h3>Límites de tiempo extra por turno</h3><span class="small muted">${ed?"Los aplica la base de datos al registrar":"Solo el administrador los cambia"}</span></div><div class="scroll"><table><thead><tr><th>Turno</th><th class="num">Jornada (h/día)</th><th class="num">Máx. T.E. por día</th><th class="num">Máx. T.E. por semana</th></tr></thead><tbody>${
+    T.map(t=>{const L=teLim(t);return `<tr><td><b>${esc(t)}</b></td>${["jornada","maxDia","maxSemana"].map(k=>`<td class="num">${ed?`<input type="number" min="0" max="24" step="0.5" data-tel="${esc(t)}|${k}" value="${L[k]}" style="width:80px;text-align:right" aria-label="${k} ${esc(t)}">`:L[k]}</td>`).join("")}</tr>`}).join("")}
+    <tr><td><b>Tope RBA semanal</b> <span class="small muted">(jornada + T.E.)</span></td><td colspan="3" class="num">${ed?`<input type="number" min="1" max="84" step="1" id="te-rba" value="${tc.rbaSemana}" style="width:80px;text-align:right" aria-label="Tope RBA"> h`:tc.rbaSemana+" h"}</td></tr></tbody></table></div>
+    <div class="pb small muted">Valores iniciales según la Ley Federal del Trabajo: hasta 3 h diarias y 9 h semanales de tiempo extra. El tope de 60 h por semana es el del código RBA.</div></div>`;
+}
+const fmtH=n=>{n=Number(n)||0;return Number.isInteger(n)?String(n):n.toFixed(1)};
+function openTEModal(num){
+  const ppl=active().filter(e=>e.turno&&canTE(e)&&(verTodos()||myTeams().includes(e.supervisor))).sort((a,b)=>a.nombre.localeCompare(b.nombre));
+  const root=$("#modal-root");
+  root.innerHTML=`<div class="modal-scrim"><div class="panel modal" role="dialog" aria-modal="true" aria-labelledby="te-mt" style="width:min(500px,100%)">
+    <div class="ph"><h3 id="te-mt">Registrar tiempo extra</h3><button class="btn" id="te-x">Cancelar</button></div>
+    <form class="pb" id="f-te" style="display:grid;gap:12px">
+      <div class="field"><label for="te-num">Persona</label><select id="te-num">${ppl.map(e=>`<option value="${esc(e.num)}" ${e.num===num?"selected":""}>${esc(e.nombre)} · ${esc(turnoCorto(e.turno))}</option>`).join("")}</select></div>
+      <div class="grid2"><div class="field"><label for="te-fe">Fecha</label><input type="date" id="te-fe" value="${S.teFecha||S.date}"></div><div class="field"><label for="te-h">Horas extra</label><input type="number" id="te-h" min="0.5" step="0.5" value="1"></div></div>
+      <div class="field"><label for="te-m">Motivo</label><input type="text" id="te-m" placeholder="Ej. cubrir ausencia en Materialista T2, inventario"></div>
+      <div id="te-info" class="small"></div>
+      <div id="te-err" style="color:var(--bad);font-size:13px;min-height:1.2em"></div>
+      <div class="row" style="justify-content:space-between"><button type="button" class="btn danger" id="te-del" hidden>Quitar registro de ese día</button><button class="btn primary" id="te-ok">Guardar</button></div></form></div></div>`;
+  const info=()=>{const e=S.emps.get($("#te-num").value),f=$("#te-fe").value;if(!e||!f){$("#te-info").innerHTML="";return}
+    const r=teRow(e.num,f),I=teInfo(e,f),h=Number($("#te-h").value)||0;
+    if(r&&document.activeElement!==$("#te-h"))$("#te-h").value=r.horas;
+    const nh=Number($("#te-h").value)||0,semN=I.sem-I.hoy+nh,totN=I.total-I.hoy+nh;
+    $("#te-del").hidden=!r;$("#te-h").max=I.L.maxDia;
+    $("#te-info").innerHTML=`${r?`<div>Ya tiene <b>${fmtH(r.horas)} h</b> ese día; al guardar se reemplaza.</div>`:""}
+      <div>Semana: <b>${fmtH(semN)}</b> de ${I.L.maxSemana} h de T.E. · <b>${fmtH(totN)}</b> de ${I.rba} h totales (RBA) · máximo ${I.L.maxDia} h por día.</div>
+      ${nh>I.L.maxDia?'<span class="chip bad">Excede el máximo diario</span> ':""}${semN>I.L.maxSemana?'<span class="chip bad">Excede el máximo semanal</span> ':""}${totN>I.rba?'<span class="chip bad">Excede el tope RBA</span> ':""}${streakAt(e.num,f)>=6?'<span class="chip bad">Lleva 6+ días seguidos: debe descansar</span> ':""}${progOn(e.num,f).vac?'<span class="chip warn">Tiene vacaciones ese día</span>':""}`};
+  ["te-num","te-fe","te-h"].forEach(id=>$("#"+id).addEventListener("input",info));info();
+  $("#te-x").onclick=()=>root.innerHTML="";
+  $("#te-del").onclick=async()=>{const r=teRow($("#te-num").value,$("#te-fe").value);if(!r)return;const {error}=await S.sb.from("tiempo_extra").delete().eq("id",r.id);if(error){$("#te-err").textContent=errMsg(error);return}root.innerHTML="";toast("Registro quitado");loadTE()};
+  $("#f-te").onsubmit=async ev=>{ev.preventDefault();const b=$("#te-ok");b.disabled=true;const e=S.emps.get($("#te-num").value);
+    const row={num:e.num,fecha:$("#te-fe").value,horas:Number($("#te-h").value),turno:e.turno,motivo:$("#te-m").value.trim(),registro_email:myEmail()};
+    const {error}=await S.sb.from("tiempo_extra").upsert(row,{onConflict:"num,fecha"});
+    if(error){$("#te-err").textContent=error.message;b.disabled=false;return}
+    root.innerHTML="";toast("Tiempo extra registrado");loadTE()};
+}
+$("#v-te").addEventListener("click",e=>{
+  const n=e.target.closest("[data-tenew]");if(n){openTEModal(n.dataset.tenew);return}
+  const r=e.target.closest("[data-teper]");if(r&&r.classList.contains("click")){openTEModal(r.dataset.teper)}
+});
+$("#v-te").addEventListener("change",e=>{
+  const t=e.target;
+  if(t.id==="te-f"){if(t.value)S.teFecha=t.value;renderTE()}else if(t.id==="te-t"){S.teTurno=t.value;renderTE()}else if(t.id==="te-s"){S.teSup=t.value;renderTE()}
+  else if(t.dataset.tel){const [tu,k]=t.dataset.tel.split("|");const v=Math.max(0,Number(t.value)||0);const tc=teCfg();const tur=Object.assign({},tc.turnos||{});tur[tu]=Object.assign(teLim(tu),{[k]:v});cfgUpdate({te:{rbaSemana:tc.rbaSemana,turnos:tur}});toast("Límite actualizado")}
+  else if(t.id==="te-rba"){const tc=teCfg();cfgUpdate({te:{rbaSemana:Math.max(1,Number(t.value)||60),turnos:tc.turnos||{}}});toast("Tope RBA actualizado")}
+});
 
 /* ---------- Usuarios y permisos por rol (solo admin) ---------- */
 let PD=null; // borrador de permisos {rol:Set}
@@ -751,7 +851,7 @@ function renderActive(){
   if(!S.tabs||!S.tabs.length)return;
   if(S.tab==="cobertura")renderCobertura();else if(S.tab==="lista")renderLista();else if(S.tab==="personal")renderPersonal();
   else if(S.tab==="reportes"){if(window.CPR)window.CPR.render($("#rep-root"))}
-  else if(S.tab==="usuarios")renderUsuarios();else if(S.tab==="movimientos")renderMovimientos();else if(S.tab==="vacaciones")renderVacaciones();else if(S.tab==="equipos"){if(window.CPE)window.CPE.render($("#eq-root"))}else renderCatalogos();
+  else if(S.tab==="usuarios")renderUsuarios();else if(S.tab==="movimientos")renderMovimientos();else if(S.tab==="vacaciones")renderVacaciones();else if(S.tab==="te")renderTE();else if(S.tab==="equipos"){if(window.CPE)window.CPE.render($("#eq-root"))}else renderCatalogos();
 }
 function setTab(t){
   if(t==="certificaciones"){S.cat="certificaciones";t="catalogos"}else if(t==="ajustes")t="catalogos";
@@ -823,6 +923,7 @@ $("#cov-dim").addEventListener("click",e=>{const b=e.target.closest("button");if
 $("#cov-turno").addEventListener("change",renderCobertura);
 $("#cov-scope").addEventListener("click",e=>{const b=e.target.closest("button");if(!b)return;S.covScope=b.dataset.v;S.sel=null;renderCobertura()});
 $("#cov-sitio").addEventListener("change",()=>{S.sel=null;renderCobertura()});
+$("#cov-sup").addEventListener("change",()=>{S.sel=null;renderCobertura()});
 $("#cov-edit").addEventListener("click",()=>{S.editReq=!S.editReq;$("#cov-edit").textContent=S.editReq?"Listo":"Editar requeridos";$("#cov-edit").classList.toggle("primary",S.editReq);renderCobertura()});
 $("#cov-matrix").addEventListener("click",e=>{const b=e.target.closest("[data-cell]");if(!b)return;S.sel=S.sel===b.dataset.cell?null:b.dataset.cell;renderCobertura();if(S.sel)$("#cov-detail").scrollIntoView({block:"nearest",behavior:"smooth"})});
 $("#cov-matrix").addEventListener("change",e=>{const i=e.target.closest("[data-req]");if(!i)return;
@@ -960,7 +1061,7 @@ async function startApp(session){
   if(c.data)S.cfg=Object.assign({},DEFAULT_CFG,c.data.data);
   if(e.error){renderBanner(`<div class="banner">No se pudo cargar el personal: ${esc(e.error.message)}</div>`)}
   S.emps=new Map((e.data||[]).map(r=>[r.num,r]));
-  S.loaded=true;await loadSups();applyPerms();refreshSelects();loadMovs();loadRecent().then(renderActive);loadProg();loadAvisos();
+  S.loaded=true;await loadSups();applyPerms();refreshSelects();loadMovs();loadRecent().then(renderActive);loadProg();loadAvisos();loadTE();
   await loadAttendance();
   if(S.isAdmin){const {data}=await S.sb.from("perfiles").select("id,email,rol").order("email");S.users=data||[];renderNav();renderActive()}
   subscribe();
@@ -1008,6 +1109,7 @@ function subscribe(){
     .on("postgres_changes",{event:"*",schema:"public",table:"roles"},()=>{loadRoles().then(renderActive)})
     .on("postgres_changes",{event:"*",schema:"public",table:"movimientos"},()=>{loadMovs()})
     .on("postgres_changes",{event:"*",schema:"public",table:"programacion"},()=>{loadProg()})
+    .on("postgres_changes",{event:"*",schema:"public",table:"tiempo_extra"},()=>{loadTE()})
     .on("postgres_changes",{event:"INSERT",schema:"public",table:"avisos"},p=>{loadAvisos();if(p.new&&p.new.titulo)toast("Aviso: "+p.new.titulo)})
     .on("postgres_changes",{event:"*",schema:"public",table:"supervisores"},()=>{loadSups().then(()=>{applyPerms();renderActive()})})
     .on("postgres_changes",{event:"*",schema:"public",table:"config"},p=>{
