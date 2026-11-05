@@ -887,11 +887,19 @@ function renderNav(){
 }
 document.addEventListener("click",e=>{
   const t=e.target.closest("#tabs [data-tab]");if(t){if(location.hash.slice(1)===t.dataset.tab)setTab(t.dataset.tab);else location.hash=t.dataset.tab;return}
-  if(e.target.closest("#logout"))S.sb.auth.signOut();
+  if(e.target.closest("#logout"))logout();
   if(e.target.closest("#chpass"))openChangePassword();
   if(e.target.closest("#avisos"))openAvisos();
   if(e.target.closest("#theme")){setTheme(curTheme()==="dark"?"light":"dark");renderNav()}
 });
+// Cierra la sesión en este equipo aunque falle la red o Supabase no responda.
+// Solo borra la sesión de este proyecto de Supabase, que comparte con Surtido de Línea.
+async function logout(){
+  if(logout.enCurso)return;logout.enCurso=true;
+  try{await Promise.race([S.sb.auth.signOut({scope:"local"}),new Promise(r=>setTimeout(r,3000))])}catch(e){}
+  try{const pre="sb-"+new URL(window.CP_CONFIG.supabaseUrl).hostname.split(".")[0]+"-";Object.keys(localStorage).filter(k=>k.startsWith(pre)).forEach(k=>localStorage.removeItem(k))}catch(e){}
+  location.reload();
+}
 const curTheme=()=>document.documentElement.getAttribute("data-theme")==="dark"?"dark":"light";
 function setTheme(t){document.documentElement.setAttribute("data-theme",t);try{localStorage.setItem("cp_tema",t)}catch(e){}}
 function openChangePassword(){
@@ -916,7 +924,7 @@ function renderNoAccess(){
   el.innerHTML=`<div class="noaccess"><div class="panel"><div class="lbl">Sin acceso</div><h2 style="font-family:var(--f-display);font-size:30px;margin:0">Tu cuenta no tiene acceso</h2>
     <p class="muted" style="margin:0">La cuenta <b>${esc(S.session.user.email)}</b> existe, pero todavía no tiene un rol en Control de Personal. Pide al administrador que te asigne uno en Usuarios.</p>
     <div class="row"><button class="btn primary" id="na-retry">Revisar de nuevo</button><button class="btn" id="na-out">Cerrar sesión</button></div></div></div>`;
-  $("#na-retry").onclick=()=>location.reload();$("#na-out").onclick=()=>S.sb.auth.signOut();
+  $("#na-retry").onclick=()=>location.reload();$("#na-out").onclick=logout;
 }
 
 /* ---------- events ---------- */
