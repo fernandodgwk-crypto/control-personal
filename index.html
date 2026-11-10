@@ -157,6 +157,12 @@ td.mono,td.nw{white-space:nowrap}
 .mov .meta{font-size:12px;color:var(--muted)}
 .mov textarea{min-height:40px}
 .noaccess{min-height:70vh;display:grid;place-items:center}
+.etq-grid{display:grid;grid-template-columns:minmax(0,1fr) 400px;gap:16px;align-items:start;margin-top:14px}
+.etq-side{display:grid;gap:16px;position:sticky;top:12px}
+.etq-cv{width:100%;height:auto;display:block;filter:drop-shadow(0 1px 3px rgba(0,0,0,.15))}
+.etq-tab input[type=text]{width:100%;min-width:70px}
+.etq-tab tr.etq-on td{background:var(--accent-soft)}
+@media (max-width:1100px){.etq-grid{grid-template-columns:1fr}.etq-side{position:static}}
 .note{background:var(--accent-soft);border-left:3px solid var(--accent);padding:9px 12px;margin:0;font-size:13px;border-radius:3px}
 .err{color:var(--bad);font-size:13px;min-height:1.2em}
 .auth-links{display:flex;flex-wrap:wrap;gap:4px 8px;justify-content:center;border-top:1px solid var(--line);padding-top:10px}
@@ -383,6 +389,7 @@ tr.click{cursor:pointer} tr.click:hover td{background:var(--surface2)}
 <script src="app.js"></script>
 <script src="reportes.js"></script>
 <script src="equipos.js"></script>
+<script src="etiquetas.js"></script>
 <script src="s5.js"></script>
 </body>
 </html>

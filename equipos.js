@@ -19,7 +19,7 @@ const hoursSince=t=>(Date.now()-new Date(t).getTime())/36e5;
 
 const ESTADO={operativo:["Funcional","ok"],fuera_servicio:["Fuera de servicio","bad"],en_reparacion:["En reparación","warn"],baja:["Baja","" ]};
 const ESTATUS={abierta:["Abierta","bad"],en_reparacion:["En reparación","warn"],espera_refaccion:["Espera de refacción","warn"],cerrada:["Cerrada","ok"]};
-const SUBS=[["tablero","Tablero"],["equipos","Equipos"],["checklist","Checklist"],["reparaciones","Reparaciones"],["revision","Revisión semanal"],["owners","Owners por turno"],["proveedores","Proveedores"],["config","Escalación y ajustes"]];
+const SUBS=[["tablero","Tablero"],["equipos","Equipos"],["checklist","Checklist"],["reparaciones","Reparaciones"],["revision","Revisión semanal"],["owners","Owners por turno"],["proveedores","Proveedores"],["etiquetas","Etiquetas"],["config","Escalación y ajustes"]];
 const PALETA=["#b3261e","#d99a1e","#2f7fb5","#6f5fc7","#1d7a46","#c2569b","#5b6878","#0f8a8a","#8a5a1d","#3a4fb0"];
 
 const E={loaded:false,loading:false,cfg:null,eq:[],prov:[],inc:[],chk:[],own:[],rev:[],sub:"tablero",fecha:today(),turno:"",week:isoWeek(today()),repView:"lista",repFil:"abiertas",eqFil:{q:"",tipo:"",estado:""},chan:null};
@@ -310,9 +310,11 @@ function render(root){
   C=window.CP;
   if(!E.loaded){root.innerHTML='<div class="panel empty">Cargando equipos…</div>';load();return}
   if(E.error){root.innerHTML=`<div class="banner">No se pudo cargar el módulo de equipos: ${esc(E.error.message)}</div>`;return}
-  const body={tablero:vTablero,equipos:vEquipos,checklist:vChecklist,reparaciones:vReparaciones,revision:vRevision,owners:vOwners,proveedores:vProveedores,config:vConfig}[E.sub]||vTablero;
+  const body={tablero:vTablero,equipos:vEquipos,checklist:vChecklist,reparaciones:vReparaciones,revision:vRevision,owners:vOwners,proveedores:vProveedores,etiquetas:()=>'<div id="etq-root"></div>',config:vConfig}[E.sub]||vTablero;
   const pend=abiertas().length;
   root.innerHTML=`<div class="seg eq-subs" role="tablist" aria-label="Secciones de equipos">${SUBS.map(([k,l])=>`<button role="tab" data-esub="${k}" aria-selected="${E.sub===k}">${l}${k==="reparaciones"&&pend?` <span class="tab-n" style="margin-left:4px">${pend}</span>`:""}</button>`).join("")}</div>`+body();
+  if(E.sub==="etiquetas"&&window.CPET)window.CPET.render($("#etq-root"),{S:C.S,sb:C.S.sb,toast:C.toast,eq:()=>E.eq,cfg:()=>E.cfg,canOp,canAdm,sitioCorto:C.sitioCorto,rerender:()=>C.renderActive(),
+    saveCfg:async et=>{const c=Object.assign({},cfgE(),{etiqueta:et});const {error}=await C.S.sb.from("eq_config").upsert({id:1,data:c});if(error){C.toast(error.message);return}E.cfg=c;C.toast("Formato guardado");C.renderActive()}});
   if(!root.dataset.bound){root.dataset.bound="1";bind(root)}
 }
 function bind(root){
