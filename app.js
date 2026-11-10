@@ -943,7 +943,7 @@ function renderNav(){
 }
 document.addEventListener("click",e=>{
   const t=e.target.closest("#tabs [data-tab]");if(t){if(location.hash.slice(1)===t.dataset.tab)setTab(t.dataset.tab);else location.hash=t.dataset.tab;return}
-  if(e.target.closest("#logout"))S.sb.auth.signOut();
+  if(e.target.closest("#logout"))logout();
   if(e.target.closest("#chpass"))openChangePassword();
   if(e.target.closest("#avisos"))openAvisos();
   if(e.target.closest("#theme")){setTheme(curTheme()==="dark"?"light":"dark");renderNav()}
@@ -977,14 +977,14 @@ async function renderNoAccess(){
       <p class="muted" style="margin:0">El administrador debe aprobarla en Usuarios. Entrarás en automático en cuanto lo haga.</p>
       <p class="note"><b>${esc(sol.nombre)}</b> · No. empleado <span class="mono">${esc(sol.num)}</span><br>${esc(sol.email)} · enviada ${fmtTs(sol.creado)}</p>
       <div class="row"><button class="btn primary" id="na-retry">Revisar de nuevo</button>${salir}</div>`);
-    $("#na-retry").onclick=()=>location.reload();$("#na-out").onclick=()=>S.sb.auth.signOut();
+    $("#na-retry").onclick=()=>location.reload();$("#na-out").onclick=()=>logout();
     clearInterval(S.naTimer);S.naTimer=setInterval(async()=>{const {data}=await S.sb.from("perfiles").select("rol").eq("id",u.id).maybeSingle();if(data&&data.rol!=="sin_acceso"){clearInterval(S.naTimer);location.reload()}},20000);
     return}
   el.innerHTML=box(`<div class="lbl">Sin acceso</div><h2 style="font-family:var(--f-display);font-size:30px;margin:0">Solicita acceso</h2>
     <p class="muted" style="margin:0">Tu cuenta <b>${esc(u.email)}</b> aún no tiene acceso a Control de Personal. Envía tu solicitud al administrador.</p>
     <form id="f-na" style="display:grid;gap:12px">${solCampos(md.nombre,md.num,u.email)}<button class="btn primary">Solicitar acceso</button><div class="err" id="na-err"></div></form>
     <div class="row">${salir}</div>`);
-  $("#na-out").onclick=()=>S.sb.auth.signOut();
+  $("#na-out").onclick=()=>logout();
   $("#f-na").onsubmit=async e=>{e.preventDefault();try{await enviarSolicitud(u.email);renderNoAccess()}catch(x){$("#na-err").textContent=authErr(x)}};
 }
 
@@ -1111,6 +1111,13 @@ CV.addEventListener("change",async e=>{
 });
 
 /* ---------- auth ---------- */
+// Salir siempre: si el servidor ya no tiene la sesión (p. ej. se cerró en otra pestaña), supabase-js responde
+// "Session not found" y no borra la sesión guardada; por eso se borra a mano y se recarga.
+async function logout(){
+  try{await S.sb.auth.signOut({scope:"local"})}catch(_){}
+  try{Object.keys(localStorage).filter(k=>/^sb-.*-auth-token/.test(k)).forEach(k=>localStorage.removeItem(k))}catch(_){}
+  location.replace(location.origin+location.pathname);
+}
 const authErr=m=>{m=String((m&&m.message)||m||"");
   if(/invalid login credentials/i.test(m))return"Correo o contraseña incorrectos.";
   if(/email not confirmed/i.test(m))return"Tu correo aún no está confirmado. Pide al administrador que revise tu cuenta.";
@@ -1167,7 +1174,7 @@ function renderNewPassword(primera){
     <div class="field"><label for="np-2">Repítela</label><input id="np-2" type="password" autocomplete="new-password" minlength="8" required></div>
     <button class="btn primary" id="lg-btn">Guardar contraseña</button><div id="lg-msg" class="err" role="status"></div>
     ${primera?'<div class="auth-links"><button type="button" class="btn ghost" id="np-out">Cerrar sesión</button></div>':""}</form>`;
-  if(primera)$("#np-out").onclick=()=>S.sb.auth.signOut();
+  if(primera)$("#np-out").onclick=()=>logout();
   $("#np-1").focus();
   $("#login-form").onsubmit=async e=>{e.preventDefault();const msg=$("#lg-msg");const p=$("#np-1").value;
     if(p!==$("#np-2").value){msg.textContent="Las contraseñas no coinciden.";return}
