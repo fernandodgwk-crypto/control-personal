@@ -37,6 +37,14 @@ Este proyecto de Supabase lo comparte la app de Surtido de Línea: las cuentas n
 - **Catálogos:** cada elemento se puede editar (renombrar); el cambio se lleva a todas las fichas. Las áreas tienen edificio.
 - **Tema claro/oscuro** con el botón de la barra (claro por defecto). La barra lateral se expande al pasar el cursor.
 
+## Acceso a la app (igual que Surtido de Línea)
+
+1. **Solicitar acceso:** en la pantalla de inicio, quien no tiene acceso presiona **Solicitar acceso** y captura nombre, número de empleado, correo y puesto. No necesita cuenta. Si ya tiene cuenta (por ejemplo de Surtido) y entra sin rol, la app le muestra el mismo formulario.
+2. **Aprobación:** a los administradores les llega un aviso. En **Usuarios → Solicitudes de acceso** el admin elige el rol y una **contraseña inicial** (la app sugiere una) y aprueba: la función `cp-aprobar-acceso` crea la cuenta, le pone el rol y liga el correo a la ficha del número de empleado. Si el correo ya tenía cuenta, se usa esa y conserva su contraseña.
+3. **Primer ingreso:** con la contraseña inicial, la app le pide crear una propia. Después puede cambiarla con **Contraseña** en el menú o recuperarla con **¿Olvidaste tu contraseña?**.
+
+Las solicitudes quedan en `cp_solicitudes_acceso` (pendiente, aprobada o rechazada): cualquiera puede enviar una sin sesión, pero solo el administrador las ve (`supabase/solicitudes_acceso.sql`). [`supabase/functions/cp-aprobar-acceso`](supabase/functions/cp-aprobar-acceso/index.ts) es una Edge Function que solo responde a un administrador y usa la llave de servicio que Supabase da a sus funciones; esa llave nunca está en el navegador.
+
 ## Roles
 
 | Rol | Puede |
@@ -62,7 +70,7 @@ Este proyecto de Supabase lo comparte la app de Surtido de Línea: las cuentas n
 
 ## Día a día
 
-- **Dar de alta un supervisor:** *Authentication → Users → Invite user*. Entra a la app, aparece en *Ajustes → Usuarios* como `lector` y ahí le cambias el rol.
+- **Dar de alta a alguien:** que pida acceso desde la pantalla de inicio y lo apruebas en *Usuarios*. Si es supervisor, liga su correo en *Catálogos → Supervisores*.
 - **Respaldar o exportar:** *Table Editor* → tabla `asistencia` o `empleados` → *Export to CSV*.
 - **El plan Free pausa el proyecto tras 7 días sin uso.** Con el uso diario no pasa; si ocurre, se reactiva desde el panel.
 

@@ -717,7 +717,7 @@ function openAvisos(){
   root.innerHTML=`<div class="modal-scrim"><div class="panel modal" role="dialog" aria-modal="true" aria-labelledby="av-t" style="width:min(560px,100%)">
     <div class="ph"><h3 id="av-t">Avisos</h3><div class="row">${list.some(a=>!a.leido)?'<button class="btn" id="av-all">Marcar todo como leído</button>':""}<button class="btn" id="av-x">Cerrar</button></div></div>
     <div style="max-height:70vh;overflow:auto">${list.length?list.map(a=>`<div style="padding:12px 16px;border-bottom:1px solid var(--line);${a.leido?"opacity:.65":""}">
-      <div class="row" style="justify-content:space-between"><b style="font-weight:600">${a.leido?"":'<span style="color:var(--accent)">● </span>'}${esc(a.titulo)}</b><span class="chip ${a.tipo==="rba"||a.tipo==="equipo"?"bad":a.tipo==="vacaciones"?"info":"warn"}">${({rba:"RBA",vacaciones:"Vacaciones",equipo:"Equipo",descanso_laborado:"Descanso laborado",te:"Tiempo extra","5s":"5S"})[a.tipo]||a.tipo}</span></div>
+      <div class="row" style="justify-content:space-between"><b style="font-weight:600">${a.leido?"":'<span style="color:var(--accent)">● </span>'}${esc(a.titulo)}</b><span class="chip ${a.tipo==="rba"||a.tipo==="equipo"?"bad":a.tipo==="vacaciones"?"info":"warn"}">${({rba:"RBA",vacaciones:"Vacaciones",equipo:"Equipo",descanso_laborado:"Descanso laborado",te:"Tiempo extra","5s":"5S",acceso:"Acceso"})[a.tipo]||a.tipo}</span></div>
       <div class="small" style="margin-top:4px">${esc(a.detalle)}</div><div class="small muted" style="margin-top:2px">${fmtTs(a.creado)}</div></div>`).join(""):'<div class="empty">No tienes avisos.</div>'}</div></div></div>`;
   $("#av-x").onclick=()=>root.innerHTML="";
   const all=$("#av-all");if(all)all.onclick=async()=>{const ids=S.avisos.filter(a=>!a.leido).map(a=>a.id);const {error}=await S.sb.from("avisos").update({leido:true}).in("id",ids);if(error){toast(errMsg(error));return}S.avisos.forEach(a=>a.leido=true);renderNav();openAvisos()};
@@ -820,6 +820,54 @@ $("#v-te").addEventListener("change",e=>{
 });
 
 /* ---------- Usuarios y permisos por rol (solo admin) ---------- */
+// Solicitudes de acceso (cp_solicitudes_acceso). Al aprobar, la función cp-aprobar-acceso crea la cuenta con la
+// contraseña inicial (o usa la que ya existe con ese correo), le pone el rol y liga el correo a la ficha.
+async function loadSols(){const {data,error}=await S.sb.from("cp_solicitudes_acceso").select("*").eq("estado","pendiente").order("creado");S.sols=error?[]:(data||[])}
+function solsHtml(){const sols=S.sols||[];if(!sols.length)return"";
+  return `<div class="panel" style="margin-bottom:16px"><div class="ph"><div><h3>Solicitudes de acceso</h3><p class="small muted" style="margin:2px 0 0">Al aprobar se crea la cuenta con la contraseña inicial que le entregas; en su primer ingreso la app le pide crear una propia.</p></div><span class="chip warn">${sols.length}</span></div>
+    <div class="scroll"><table><thead><tr><th>Nombre</th><th>No. empleado</th><th>Correo</th><th>Puesto o área</th><th>Enviada</th><th></th></tr></thead><tbody>${sols.map(x=>{const f=S.emps.get(String(x.num).trim());
+      return `<tr><td><b style="font-weight:600">${esc(x.nombre)}</b>${f?`<div class="small muted">Ficha: ${esc(f.nombre)}${f.email&&f.email.toLowerCase()!==x.email.toLowerCase()?` · <span style="color:var(--bad)">ya tiene ${esc(f.email)}</span>`:""}</div>`:'<div class="small" style="color:var(--warn)">Sin ficha con ese número</div>'}</td>
+      <td class="mono">${esc(x.num)}</td><td>${esc(x.email)}</td><td class="small">${esc(x.puesto||"—")}</td><td class="small nw">${fmtTs(x.creado)}</td>
+      <td><div class="row" style="justify-content:flex-end;flex-wrap:nowrap"><button class="btn primary" data-solok="${x.id}">Aprobar</button><button class="btn" data-solno="${x.id}">Rechazar</button></div></td></tr>`}).join("")}</tbody></table></div></div>`}
+const genPass=()=>{const a="ABCDEFGHJKLMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789",r=new Uint32Array(10);crypto.getRandomValues(r);return Array.from(r,n=>a[n%a.length]).join("")};
+function openApprove(sol){
+  const f=S.emps.get(String(sol.num).trim()),esSup=f&&S.sups.some(x=>x.nombre===f.nombre);
+  const roles=S.roles.filter(r=>r.nombre!=="sin_acceso"),def=esSup?"supervisor":"lector";
+  const root=$("#modal-root");
+  root.innerHTML=`<div class="modal-scrim"><div class="panel modal" role="dialog" aria-modal="true" aria-labelledby="ap-t" style="width:min(500px,100%)">
+    <div class="ph"><h3 id="ap-t">Aprobar acceso</h3><button class="btn" id="ap-x">Cancelar</button></div>
+    <form class="pb" id="f-ap" style="display:grid;gap:12px">
+      <p class="small muted" style="margin:0"><b>${esc(sol.email)}</b>${sol.puesto?" · "+esc(sol.puesto):""}</p>
+      <div class="field"><label for="ap-n">Nombre</label><input id="ap-n" value="${esc(sol.nombre)}" required></div>
+      <div class="field"><label for="ap-num">Número de empleado</label><input id="ap-num" value="${esc(sol.num)}"><div class="small muted" id="ap-f" style="margin-top:4px"></div></div>
+      <div class="field"><label for="ap-r">Rol en la app</label><select id="ap-r">${roles.map(r=>`<option value="${esc(r.nombre)}" ${r.nombre===def?"selected":""}>${esc(ROLE_LABEL(r.nombre))}</option>`).join("")}</select></div>
+      <div class="field"><label for="ap-p">Contraseña inicial (mín. 8)</label><div class="row" style="flex-wrap:nowrap"><input id="ap-p" value="${genPass()}" minlength="8" required style="flex:1;font-family:var(--f-mono)"><button type="button" class="btn" id="ap-gen">Otra</button></div>
+        <div class="small muted" style="margin-top:4px">Se la entregas a la persona. Si ese correo ya tiene cuenta (por ejemplo de Surtido), se conserva su contraseña actual.</div></div>
+      <div class="err" id="ap-err"></div>
+      <div class="row" style="justify-content:flex-end"><button class="btn primary" id="ap-ok">Aprobar y crear cuenta</button></div></form></div></div>`;
+  const ficha=()=>{const e=S.emps.get($("#ap-num").value.trim());$("#ap-f").innerHTML=e?`Se liga a la ficha de <b>${esc(e.nombre)}</b>${e.email&&e.email.toLowerCase()!==sol.email.toLowerCase()?` <span style="color:var(--bad)">(ya tiene el correo ${esc(e.email)})</span>`:""}`:"No hay ficha con ese número; la cuenta se crea sin ligarse a Personal."};
+  ficha();$("#ap-num").oninput=ficha;
+  $("#ap-gen").onclick=()=>$("#ap-p").value=genPass();
+  $("#ap-x").onclick=()=>root.innerHTML="";
+  $("#f-ap").onsubmit=async ev=>{ev.preventDefault();const btn=$("#ap-ok");btn.disabled=true;$("#ap-err").textContent="";
+    const pass=$("#ap-p").value,body={solicitud_id:sol.id,nombre:$("#ap-n").value.trim(),num:$("#ap-num").value.trim(),rol:$("#ap-r").value,password:pass};
+    const {data,error}=await S.sb.functions.invoke("cp-aprobar-acceso",{body});
+    if(error){let m=error.message,st=0;try{st=error.context.status;const j=await error.context.json();m=j.error||m}catch(_){}
+      if(st===404){root.innerHTML="";toast("Esa solicitud ya no estaba pendiente; la lista se actualizó.");await loadSols();renderNav();renderActive();return}
+      $("#ap-err").textContent=m;btn.disabled=false;return}
+    await loadSols();const {data:us}=await S.sb.from("perfiles").select("id,email,rol").order("email");S.users=us||S.users;renderNav();renderActive();
+    root.innerHTML=`<div class="modal-scrim"><div class="panel modal" role="dialog" aria-modal="true" aria-labelledby="ap2-t" style="width:min(460px,100%)">
+      <div class="ph"><h3 id="ap2-t">Acceso aprobado</h3><button class="btn primary" id="ap-x">Listo</button></div>
+      <div class="pb" style="display:grid;gap:10px">${data&&data.existente
+        ?`<p style="margin:0"><b>${esc(body.nombre)}</b> ya tenía cuenta con <b>${esc(data.email)}</b> (por ejemplo de Surtido). Ya tiene el rol <b>${esc(ROLE_LABEL(body.rol))}</b>: entra con su contraseña de siempre.</p>`
+        :`<p style="margin:0">Entrega estos datos a <b>${esc(body.nombre)}</b>. En su primer ingreso la app le pedirá crear su propia contraseña.</p>
+          <div class="cred">${esc(location.origin+location.pathname)}<br>Correo: ${esc(data.email)}<br>Contraseña inicial: ${esc(pass)}</div>
+          <button class="btn" id="ap-copy">Copiar</button>`}
+        ${data&&data.ficha?`<p class="small muted" style="margin:0">Ligada a la ficha de ${esc(data.ficha)}.</p>`:""}</div></div></div>`;
+    $("#ap-x").onclick=()=>root.innerHTML="";
+    const cp=$("#ap-copy");if(cp)cp.onclick=async()=>{try{await navigator.clipboard.writeText(`Control de Personal\n${location.origin+location.pathname}\nCorreo: ${data.email}\nContraseña inicial: ${pass}`);toast("Copiado")}catch(_){toast("No se pudo copiar")}};
+  };
+}
 let PD=null; // borrador de permisos {rol:Set}
 function permDraft(){if(!PD)PD=Object.fromEntries(S.roles.filter(r=>r.nombre!=="admin").map(r=>[r.nombre,new Set(r.permisos||[])]));return PD}
 function renderUsuarios(){
@@ -834,7 +882,7 @@ function renderUsuarios(){
     <div class="scroll"><table><thead><tr><th>Correo</th><th>Rol</th><th>Pestañas</th></tr></thead><tbody>${S.users.length?S.users.map(u=>{const r=roles.find(x=>x.nombre===u.rol);const t=tabsOfRole(u.rol,r&&r.permisos);
       return `<tr><td>${esc(u.email)}${u.id===S.session.user.id?' <span class="chip">tú</span>':""}</td><td><select data-urol="${esc(u.id)}" aria-label="Rol de ${esc(u.email)}" ${u.id===S.session.user.id?"disabled":""}>${roles.map(x=>`<option value="${esc(x.nombre)}" ${u.rol===x.nombre?"selected":""}>${esc(ROLE_LABEL(x.nombre))}</option>`).join("")}</select></td>
       <td class="small">${t.length?t.map(x=>esc(TABS[x].label)).join(" · "):'<span class="chip bad">Sin acceso</span>'}</td></tr>`}).join(""):`<tr><td colspan="3" class="empty">Cargando usuarios…</td></tr>`}</tbody></table></div>
-    <div class="pb small muted" style="padding-top:10px">Para dar de alta a alguien, créalo o invítalo en Supabase → Authentication → Users. Aparece aquí con rol Sin acceso y tú le asignas uno.</div></div>`;
+    <div class="pb small muted" style="padding-top:10px">Cada persona pide acceso desde la pantalla de inicio con <b>Solicitar acceso</b> y la apruebas arriba. Si alguien ya tiene cuenta (por ejemplo de Surtido), aparece aquí con rol Sin acceso y le asignas uno.</div></div>`;
   const permHtml=!S.rolesDb?`<div class="banner">Para configurar permisos por rol, ejecuta supabase/roles.sql en el SQL Editor de Supabase y recarga la página.</div>`:`<div class="panel"><div class="ph"><div><h3>Permisos por rol</h3>
       <p class="small muted" style="margin:2px 0 0">El administrador tiene todo y es el único con Usuarios. Las acciones las valida la base de datos, no solo la app.</p></div>
       <div class="row">${dirty?'<span class="chip warn">Cambios sin guardar</span>':""}<button class="btn" id="pm-def">Valores por defecto</button><button class="btn primary" id="pm-save" ${dirty?"":"disabled"}>Guardar permisos</button></div></div>
@@ -845,7 +893,7 @@ function renderUsuarios(){
     </tbody></table></div>
     <div class="pb"><div class="row"><input type="text" id="role-new" placeholder="Nuevo rol (ej. lider, planeador)" aria-label="Nuevo rol" style="flex:1 1 200px"><button class="btn" data-radd>Agregar rol</button></div>
     <p class="small muted" style="margin:10px 0 0">Dar una acción también da su pestaña; quitar una pestaña quita las acciones que dependen de ella. Un rol sin pestañas no puede entrar a la app.</p></div></div>`;
-  root.innerHTML=usersHtml+permHtml;
+  root.innerHTML=solsHtml()+usersHtml+permHtml;
 }
 function deepMerge(a,b){const o=Array.isArray(a)?a.slice():Object.assign({},a);Object.keys(b).forEach(k=>{const v=b[k];if(v&&typeof v==="object"&&!Array.isArray(v)&&o[k]&&typeof o[k]==="object"&&!Array.isArray(o[k]))o[k]=deepMerge(o[k],v);else if(v===null)delete o[k];else o[k]=v});return o}
 let cfgChain=Promise.resolve();
@@ -884,7 +932,7 @@ function renderBanner(msg){
 }
 window.addEventListener("hashchange",()=>setTab(location.hash.slice(1)));
 function renderNav(){
-  const pend=S.isAdmin?S.users.filter(u=>u.rol==="sin_acceso").length:0;
+  const pend=S.isAdmin?(S.sols||[]).length:0;
   let lastG="";
   $("#tabs").innerHTML=(S.tabs||[]).map(t=>{const g=NAV_G[t]||"";const hd=g!==lastG?`<div class="nav-g">${esc(g)}</div>`:"";lastG=g;return hd+`<button data-tab="${t}" aria-current="${S.tab===t?"page":"false"}" title="${esc(TABS[t].label)}" aria-label="${esc(TABS[t].label)}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${TABS[t].icon}</svg><span class="t">${esc(TABS[t].nav||TABS[t].label)}</span>${t==="usuarios"&&pend?`<span class="tab-n" title="${pend} cuenta(s) sin acceso">${pend}</span>`:""}${t==="movimientos"&&pendingToApprove()?`<span class="tab-n" title="Por aprobar">${pendingToApprove()}</span>`:""}</button>`}).join("");
   $("#who").innerHTML=`<span class="nm" title="${esc(S.session?S.session.user.email:"")}">${esc(S.session?S.session.user.email:"")}</span><span class="role">${esc(ROLE_LABEL(S.rol))}</span>
@@ -919,12 +967,25 @@ function openChangePassword(){
     if(error){err.textContent=/least|weak/i.test(error.message)?"Usa al menos 8 caracteres.":/different|same/i.test(error.message)?"Debe ser distinta de la anterior.":error.message;return}
     close();toast("Contraseña actualizada")};
 }
-function renderNoAccess(){
-  const el=$("#noaccess");el.hidden=false;
-  el.innerHTML=`<div class="noaccess"><div class="panel"><div class="lbl">Sin acceso</div><h2 style="font-family:var(--f-display);font-size:30px;margin:0">Tu cuenta no tiene acceso</h2>
-    <p class="muted" style="margin:0">La cuenta <b>${esc(S.session.user.email)}</b> existe, pero todavía no tiene un rol en Control de Personal. Pide al administrador que te asigne uno en Usuarios.</p>
-    <div class="row"><button class="btn primary" id="na-retry">Revisar de nuevo</button><button class="btn" id="na-out">Cerrar sesión</button></div></div></div>`;
-  $("#na-retry").onclick=()=>location.reload();$("#na-out").onclick=()=>S.sb.auth.signOut();
+async function renderNoAccess(){
+  const el=$("#noaccess");el.hidden=false;document.querySelectorAll("section.view").forEach(x=>x.hidden=true);$("#pagehead").hidden=true;const u=S.session.user,md=u.user_metadata||{};
+  const salir='<button class="btn" id="na-out">Cerrar sesión</button>';
+  const box=inner=>`<div class="noaccess"><div class="panel">${inner}</div></div>`;
+  const {data:sol}=await S.sb.from("cp_solicitudes_acceso").select("*").eq("estado","pendiente").ilike("email",u.email).maybeSingle();
+  if(sol){
+    el.innerHTML=box(`<div class="lbl">Acceso pendiente</div><h2 style="font-family:var(--f-display);font-size:30px;margin:0">Tu solicitud está en revisión</h2>
+      <p class="muted" style="margin:0">El administrador debe aprobarla en Usuarios. Entrarás en automático en cuanto lo haga.</p>
+      <p class="note"><b>${esc(sol.nombre)}</b> · No. empleado <span class="mono">${esc(sol.num)}</span><br>${esc(sol.email)} · enviada ${fmtTs(sol.creado)}</p>
+      <div class="row"><button class="btn primary" id="na-retry">Revisar de nuevo</button>${salir}</div>`);
+    $("#na-retry").onclick=()=>location.reload();$("#na-out").onclick=()=>S.sb.auth.signOut();
+    clearInterval(S.naTimer);S.naTimer=setInterval(async()=>{const {data}=await S.sb.from("perfiles").select("rol").eq("id",u.id).maybeSingle();if(data&&data.rol!=="sin_acceso"){clearInterval(S.naTimer);location.reload()}},20000);
+    return}
+  el.innerHTML=box(`<div class="lbl">Sin acceso</div><h2 style="font-family:var(--f-display);font-size:30px;margin:0">Solicita acceso</h2>
+    <p class="muted" style="margin:0">Tu cuenta <b>${esc(u.email)}</b> aún no tiene acceso a Control de Personal. Envía tu solicitud al administrador.</p>
+    <form id="f-na" style="display:grid;gap:12px">${solCampos(md.nombre,md.num,u.email)}<button class="btn primary">Solicitar acceso</button><div class="err" id="na-err"></div></form>
+    <div class="row">${salir}</div>`);
+  $("#na-out").onclick=()=>S.sb.auth.signOut();
+  $("#f-na").onsubmit=async e=>{e.preventDefault();try{await enviarSolicitud(u.email);renderNoAccess()}catch(x){$("#na-err").textContent=authErr(x)}};
 }
 
 /* ---------- events ---------- */
@@ -1003,6 +1064,13 @@ UV.addEventListener("click",async e=>{
     }
     PD=null;await loadRoles();toast("Permisos guardados");renderUsuarios();return}
 });
+UV.addEventListener("click",async e=>{
+  const ok=e.target.closest("[data-solok]");if(ok){const x=(S.sols||[]).find(y=>y.id===ok.dataset.solok);if(x)openApprove(x);return}
+  const no=e.target.closest("[data-solno]");
+  if(no){if(no.dataset.confirm!=="1"){no.dataset.confirm="1";no.textContent="¿Rechazar? Clic de nuevo";return}
+    no.disabled=true;const {error}=await S.sb.from("cp_solicitudes_acceso").update({estado:"rechazada",revisado:new Date().toISOString(),revisado_por:myEmail()}).eq("id",no.dataset.solno);
+    if(error)toast(errMsg(error));else toast("Solicitud rechazada");await loadSols();renderNav();renderActive()}
+});
 UV.addEventListener("change",async e=>{
   const c=e.target.closest("[data-perm]");
   if(c){const [r,k]=c.dataset.perm.split("|"),d=permDraft(),set=d[r],p=PRIVS.find(x=>x.k===k);
@@ -1043,27 +1111,83 @@ CV.addEventListener("change",async e=>{
 });
 
 /* ---------- auth ---------- */
-$("#login-form").addEventListener("submit",async e=>{
-  e.preventDefault();$("#lg-btn").disabled=true;$("#lg-msg").textContent="";
-  const {error}=await S.sb.auth.signInWithPassword({email:$("#lg-email").value.trim(),password:$("#lg-pass").value});
-  $("#lg-btn").disabled=false;
-  if(error)$("#lg-msg").textContent=/invalid/i.test(error.message)?"Correo o contraseña incorrectos.":error.message;
-});
-$("#lg-reset").addEventListener("click",async()=>{
-  const email=$("#lg-email").value.trim();if(!email){$("#lg-msg").textContent="Escribe tu correo primero.";return}
-  const {error}=await S.sb.auth.resetPasswordForEmail(email,{redirectTo:location.origin+location.pathname});
-  $("#lg-msg").textContent=error?error.message:"Te enviamos un correo para cambiar tu contraseña.";
-});
+const authErr=m=>{m=String((m&&m.message)||m||"");
+  if(/invalid login credentials/i.test(m))return"Correo o contraseña incorrectos.";
+  if(/email not confirmed/i.test(m))return"Tu correo aún no está confirmado. Pide al administrador que revise tu cuenta.";
+  if(/signups not allowed|signup_disabled/i.test(m))return"El registro directo está desactivado. Usa \"Solicitar acceso\".";
+  if(/password should be at least|weak password/i.test(m))return"La contraseña es muy corta o muy simple. Usa al menos 8 caracteres.";
+  if(/same password|should be different/i.test(m))return"La nueva contraseña debe ser distinta de la anterior.";
+  if(/for security purposes|rate limit|too many/i.test(m))return"Demasiados intentos. Espera un momento y vuelve a intentarlo.";
+  if(/fetch|network/i.test(m))return"Sin conexión. Revisa el internet y vuelve a intentar.";
+  return m||"No se pudo completar. Intenta de nuevo."};
+const solCampos=(n,num,email)=>`
+  <div class="field"><label for="s-nombre">Nombre completo</label><input id="s-nombre" value="${esc(n||"")}" autocomplete="name" required minlength="2" maxlength="80"></div>
+  <div class="field"><label for="s-num">Número de empleado</label><input id="s-num" value="${esc(num||"")}" autocomplete="off" inputmode="numeric" required maxlength="30"></div>
+  ${email===undefined?'<div class="field"><label for="s-email">Correo</label><input id="s-email" type="email" autocomplete="email" required maxlength="120"></div>':""}
+  <div class="field"><label for="s-puesto">Puesto o área <span class="muted">(opcional)</span></label><input id="s-puesto" maxlength="80" autocomplete="off" placeholder="Ej. Supervisor 1er turno, Materiales B2"></div>`;
+async function enviarSolicitud(email){
+  const {error}=await S.sb.from("cp_solicitudes_acceso").insert({nombre:$("#s-nombre").value.trim(),num:$("#s-num").value.trim(),email:email.trim().toLowerCase(),puesto:$("#s-puesto").value.trim()||null});
+  if(error&&error.code==="23505")throw new Error("Ya hay una solicitud pendiente con ese correo. El administrador la revisará.");
+  if(error)throw error;
+}
+function renderAuth(modo,aviso){
+  const el=$("#login");el.hidden=false;
+  const links=[["login","Iniciar sesión"],["solicitar","Solicitar acceso"],["olvido","¿Olvidaste tu contraseña?"]].filter(([k])=>k!==modo)
+    .map(([k,l])=>`<button type="button" class="btn ghost" data-auth="${k}">${l}</button>`).join("");
+  const forms={
+    login:`<h2>Iniciar sesión</h2><p class="muted" style="margin:0">Usa tu correo y tu contraseña. Si aún no tienes acceso, solicítalo abajo.</p>
+      <div class="field"><label for="lg-email">Correo</label><input id="lg-email" type="email" autocomplete="username" required></div>
+      <div class="field"><label for="lg-pass">Contraseña</label><input id="lg-pass" type="password" autocomplete="current-password" required></div>
+      <button class="btn primary" id="lg-btn">Entrar</button>`,
+    solicitar:`<h2>Solicitar acceso</h2><p class="muted" style="margin:0">Captura tus datos. El administrador los revisa y, al aprobar, te entrega tu contraseña inicial.</p>
+      ${solCampos()}<button class="btn primary" id="lg-btn">Enviar solicitud</button>`,
+    olvido:`<h2>Recupera tu contraseña</h2><p class="muted" style="margin:0">Te enviaremos un enlace a tu correo para crear una nueva. Si no te llega, pide al administrador una contraseña nueva.</p>
+      <div class="field"><label for="lg-email">Correo</label><input id="lg-email" type="email" autocomplete="username" required></div>
+      <button class="btn primary" id="lg-btn">Enviar enlace</button>`};
+  el.innerHTML=`<form id="login-form" class="panel">${forms[modo]}${aviso?`<p class="note">${aviso}</p>`:""}<div id="lg-msg" class="err" role="status"></div><div class="auth-links">${links}</div></form>`;
+  el.querySelectorAll("[data-auth]").forEach(b=>b.onclick=()=>renderAuth(b.dataset.auth));
+  const f=$("#login-form"),btn=$("#lg-btn"),msg=$("#lg-msg");
+  f.querySelector("input").focus();
+  f.onsubmit=async e=>{e.preventDefault();msg.textContent="";btn.disabled=true;
+    try{
+      if(modo==="login"){const {error}=await S.sb.auth.signInWithPassword({email:$("#lg-email").value.trim(),password:$("#lg-pass").value});if(error)throw error;return}
+      if(modo==="solicitar"){const email=$("#s-email").value.trim();await enviarSolicitud(email);
+        return renderAuth("login",`Solicitud enviada para <b>${esc(email)}</b>. Cuando el administrador la apruebe te entregará tu contraseña inicial; con ella inicia sesión aquí.`)}
+      const email=$("#lg-email").value.trim();const {error}=await S.sb.auth.resetPasswordForEmail(email,{redirectTo:location.origin+location.pathname});if(error)throw error;
+      renderAuth("login",`Si <b>${esc(email)}</b> tiene cuenta, te llegará un enlace para crear una nueva contraseña.`);
+    }catch(x){msg.textContent=authErr(x);btn.disabled=false}};
+}
+// Nueva contraseña: tras el enlace de recuperación, o en el primer ingreso con la contraseña inicial.
+function renderNewPassword(primera){
+  S.recovery=true;const el=$("#login");el.hidden=false;$("#side").hidden=true;$("#noaccess").hidden=true;$("#pagehead").hidden=true;
+  document.querySelectorAll("section.view").forEach(x=>x.hidden=true);
+  el.innerHTML=`<form id="login-form" class="panel"><h2>Crea tu contraseña</h2>
+    ${primera?'<p class="muted" style="margin:0">Entraste con la contraseña inicial que te dio el administrador. Crea una propia para continuar.</p>':""}
+    <div class="field"><label for="np-1">Nueva contraseña</label><input id="np-1" type="password" autocomplete="new-password" minlength="8" required></div>
+    <div class="field"><label for="np-2">Repítela</label><input id="np-2" type="password" autocomplete="new-password" minlength="8" required></div>
+    <button class="btn primary" id="lg-btn">Guardar contraseña</button><div id="lg-msg" class="err" role="status"></div>
+    ${primera?'<div class="auth-links"><button type="button" class="btn ghost" id="np-out">Cerrar sesión</button></div>':""}</form>`;
+  if(primera)$("#np-out").onclick=()=>S.sb.auth.signOut();
+  $("#np-1").focus();
+  $("#login-form").onsubmit=async e=>{e.preventDefault();const msg=$("#lg-msg");const p=$("#np-1").value;
+    if(p!==$("#np-2").value){msg.textContent="Las contraseñas no coinciden.";return}
+    $("#lg-btn").disabled=true;
+    const {error}=await S.sb.auth.updateUser({password:p,data:{debe_cambiar:false}});
+    if(error){msg.textContent=authErr(error);$("#lg-btn").disabled=false;return}
+    history.replaceState(null,"",location.origin+location.pathname);location.reload()};
+}
 
 function showLogin(){
   S.session=null;S.emps=new Map();S.att={};S.loaded=false;
   if(S.channel){S.sb.removeChannel(S.channel);S.channel=null}
-  $("#login").hidden=false;$("#side").hidden=true;$("#noaccess").hidden=true;S.tabs=[];
+  renderAuth("login");$("#side").hidden=true;$("#noaccess").hidden=true;S.tabs=[];
   renderBanner();setTab(S.tab);
 }
 async function startApp(session){
   if(S.session&&S.session.user.id===session.user.id){S.session=session;return}
   S.session=session;
+  if(S.recovery)return;
+  if((session.user.user_metadata||{}).debe_cambiar){renderNewPassword(true);return}
   $("#login").hidden=true;
   const {data:perfil}=await S.sb.from("perfiles").select("rol").eq("id",session.user.id).maybeSingle();
   S.rol=(perfil&&perfil.rol)||"sin_acceso";await loadRoles();
@@ -1076,7 +1200,7 @@ async function startApp(session){
   S.emps=new Map((e.data||[]).map(r=>[r.num,r]));
   S.loaded=true;await loadSups();applyPerms();refreshSelects();loadMovs();loadRecent().then(renderActive);loadProg();loadAvisos();loadTE();
   await loadAttendance();
-  if(S.isAdmin){const {data}=await S.sb.from("perfiles").select("id,email,rol").order("email");S.users=data||[];renderNav();renderActive()}
+  if(S.isAdmin){const {data}=await S.sb.from("perfiles").select("id,email,rol").order("email");S.users=data||[];await loadSols();renderNav();renderActive()}
   subscribe();
 }
 async function loadRoles(){
@@ -1120,6 +1244,7 @@ function subscribe(){
       if(p.eventType==="DELETE")S.emps.delete(p.old.num);else S.emps.set(p.new.num,p.new);refreshSelects();renderActive();
     })
     .on("postgres_changes",{event:"*",schema:"public",table:"roles"},()=>{loadRoles().then(renderActive)})
+    .on("postgres_changes",{event:"*",schema:"public",table:"cp_solicitudes_acceso"},()=>{if(S.isAdmin)loadSols().then(()=>{renderNav();renderActive()})})
     .on("postgres_changes",{event:"*",schema:"public",table:"movimientos"},()=>{loadMovs()})
     .on("postgres_changes",{event:"*",schema:"public",table:"programacion"},()=>{loadProg()})
     .on("postgres_changes",{event:"*",schema:"public",table:"tiempo_extra"},()=>{loadTE()})
@@ -1142,14 +1267,9 @@ window.CP={S,cfg,active,ST,PRESENT,sitioCorto,turnosUsed,listUsed,supsUsed,missi
   }
   S.sb=window.supabase.createClient(C.supabaseUrl,C.supabaseAnonKey);
   S.sb.auth.onAuthStateChange((ev,session)=>{
-    if(ev==="PASSWORD_RECOVERY"){showReset();return}
+    if(ev==="PASSWORD_RECOVERY"){renderNewPassword(false);return}
     if(session)startApp(session);else showLogin();
   });
 })();
-function showReset(){
-  $("#login").hidden=false;
-  $("#login-form").innerHTML=`<h2>Nueva contraseña</h2><div class="field"><label for="np">Contraseña nueva (mín. 8)</label><input id="np" type="password" minlength="8" autocomplete="new-password" required></div><button class="btn primary" id="np-btn" type="button">Guardar contraseña</button><div id="np-msg" class="muted"></div>`;
-  $("#np-btn").addEventListener("click",async()=>{const v=$("#np").value;if(v.length<8){$("#np-msg").textContent="Mínimo 8 caracteres.";return}
-    const {error}=await S.sb.auth.updateUser({password:v});$("#np-msg").textContent=error?error.message:"Listo. Recarga la página.";});
-}
+
 })();
