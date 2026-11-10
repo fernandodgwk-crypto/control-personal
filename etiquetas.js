@@ -18,7 +18,9 @@ const T={rows:[],loaded:false,loading:false,sel:new Set(),prev:null,chan:null,
   page:{ancho:90,alto:50,hoja:"carta",corte:true,margen:8,sep:4}};
 try{Object.assign(T.page,JSON.parse(localStorage.getItem("cp_etq_page")||"{}"))}catch(e){}
 const savePage=()=>{try{localStorage.setItem("cp_etq_page",JSON.stringify(T.page))}catch(e){}};
-const ajustes=()=>Object.assign({titulo:"CONTROL DE PRODUCCIÓN",qr:"sn",logo:""},(A.cfg()||{}).etiqueta||{});
+const ajustes=()=>Object.assign({titulo:"CONTROL DE PRODUCCIÓN",qr:"sn",logo:"",c1:"MODELO",c2:"EDIFICIO",c3:"SN"},(A.cfg()||{}).etiqueta||{});
+const lbl=(aj,k)=>String(aj[k]||"").trim().toUpperCase();
+const cap=x=>x.toLowerCase().replace(/^./,y=>y.toUpperCase());
 
 /* ---------- carga de librerías ---------- */
 const libs={};
@@ -33,7 +35,7 @@ async function load(){
   if(!T.chan){T.chan=A.sb.channel("cp-etq").on("postgres_changes",{event:"*",schema:"public",table:"eq_etiquetas"},()=>{clearTimeout(T.tm);T.tm=setTimeout(()=>{T.loading=false;load()},400)}).subscribe()}
   A.rerender();
 }
-const qrText=(r,aj)=>(r.qr||"").trim()||(aj.qr==="todo"?`MODELO: ${r.modelo}\nEDIFICIO: ${r.edificio}\nSN: ${r.sn}`:String(r.sn||"").trim());
+const qrText=(r,aj)=>(r.qr||"").trim()||(aj.qr==="todo"?`${lbl(aj,"c1")}: ${r.modelo}\n${lbl(aj,"c2")}: ${r.edificio}\n${lbl(aj,"c3")}: ${r.sn}`:String(r.sn||"").trim());
 
 /* ---------- dibujo de la etiqueta (diseño base 1180 × 660) ---------- */
 function rr(c,x,y,w,h,r){c.beginPath();c.moveTo(x+r,y);c.arcTo(x+w,y,x+w,y+h,r);c.arcTo(x+w,y+h,x,y+h,r);c.arcTo(x,y+h,x,y,r);c.arcTo(x,y,x+w,y,r);c.closePath()}
@@ -88,7 +90,7 @@ function dibujar(canvas,r,aj,logoImg){
     c.save();rr(c,38,y,642,93,16);c.clip();c.fillStyle=NAVY;c.beginPath();c.moveTo(30,y-2);c.lineTo(322,y-2);c.lineTo(350,y+46.5);c.lineTo(322,y+95);c.lineTo(30,y+95);c.closePath();c.fill();c.restore();
     c.fillStyle="#fff";const lf="700 {s}px 'Barlow Condensed','Arial Narrow',Arial,sans-serif";c.font=lf.replace("{s}",fit(c,lbl,lf,262,62,30));c.fillText(lbl,62,y+68);
     const v=String(val||"");c.fillStyle="#111";fitValor(c,v,296,66);c.fillText(v,372,y+70)};
-  campo(292,"MODELO:",r.modelo);campo(412,"EDIFICIO:",r.edificio);
+  campo(292,lbl(aj,"c1")+":",r.modelo);campo(412,lbl(aj,"c2")+":",r.edificio);
   // QR
   const q=qrMatrix(qrText(r,aj));const QX=722,QY=40,QS=420;
   if(q){const n=q.getModuleCount(),m=QS/n;c.fillStyle="#000";
@@ -96,7 +98,7 @@ function dibujar(canvas,r,aj,logoImg){
   else{c.strokeStyle="#bbb";c.lineWidth=3;c.setLineDash([12,10]);c.strokeRect(QX+20,QY+20,QS-40,QS-40);c.setLineDash([]);c.fillStyle="#999";c.font="600 34px Arial";c.textAlign="center";c.fillText("Sin datos para QR",QX+QS/2,QY+QS/2);c.textAlign="left"}
   // SN
   c.fillStyle=NAVY;rr(c,712,486,436,96,18);c.fill();
-  const sn="SN: "+String(r.sn||"");c.fillStyle="#fff";c.textAlign="center";fitValor(c,sn,400,60);c.fillText(sn,930,555);c.textAlign="left";
+  const sn=lbl(aj,"c3")+": "+String(r.sn||"");c.fillStyle="#fff";c.textAlign="center";fitValor(c,sn,400,60);c.fillText(sn,930,555);c.textAlign="left";
 }
 let logoCache={src:null,img:null};
 function logoImg(aj){if(!aj.logo)return Promise.resolve(null);if(logoCache.src===aj.logo)return Promise.resolve(logoCache.img);
@@ -117,8 +119,9 @@ function vista(){
         <button class="btn" id="etq-eq">Desde equipos registrados</button>
         <label class="btn" style="cursor:pointer">Importar Excel / CSV<input type="file" id="etq-file" accept=".xlsx,.xls,.csv" hidden></label>
         <button class="btn" id="etq-tpl">Descargar plantilla</button>
+        ${sel.length?`<button class="btn" id="etq-edsel">Cambiar ${esc(lbl(aj,"c2").toLowerCase())} de ${sel.length} marcadas</button>`:""}
         ${sel.length?`<button class="btn danger" id="etq-delsel">Quitar ${sel.length} marcadas</button>`:""}</div>`:""}
-      <div class="scroll"><table class="etq-tab"><thead><tr><th style="width:28px"><input type="checkbox" id="etq-all" aria-label="Marcar todas" ${T.rows.length&&sel.length===T.rows.length?"checked":""}></th><th>Modelo</th><th>Edificio</th><th>SN</th><th title="Vacío: según el ajuste general">QR <span class="muted">(opcional)</span></th><th style="width:70px">Copias</th><th>Impresa</th><th></th></tr></thead><tbody>
+      <div class="scroll"><table class="etq-tab"><thead><tr><th style="width:28px"><input type="checkbox" id="etq-all" aria-label="Marcar todas" ${T.rows.length&&sel.length===T.rows.length?"checked":""}></th><th>${esc(cap(lbl(aj,"c1")))}</th><th>${esc(cap(lbl(aj,"c2")))}</th><th>${esc(lbl(aj,"c3"))}</th><th title="Vacío: según el ajuste general">QR <span class="muted">(opcional)</span></th><th style="width:70px">Copias</th><th>Impresa</th><th></th></tr></thead><tbody>
       ${T.rows.length?T.rows.map(r=>`<tr data-etq="${r.id}" class="${T.prev===r.id?"etq-on":""}">
         <td><input type="checkbox" data-etqsel="${r.id}" ${T.sel.has(r.id)?"checked":""} aria-label="Marcar"></td>
         ${["modelo","edificio","sn","qr"].map(k=>`<td><input type="text" data-etqf="${k}" value="${esc(r[k])}" ${op?"":"disabled"} ${k==="edificio"?'list="etq-edifs"':""} placeholder="${k==="qr"?esc(qrText({...r,qr:""},aj).split("\n")[0]||"—"):""}" aria-label="${k}"></td>`).join("")}
@@ -131,6 +134,7 @@ function vista(){
         <div class="pb"><canvas id="etq-cv" width="1180" height="660" class="etq-cv" aria-label="Vista previa de la etiqueta"></canvas></div></div>
       <div class="panel"><div class="ph"><h3>Formato e impresión</h3></div><div class="pb" style="display:grid;gap:10px">
         <div class="field"><label for="etq-tit">Título</label><input type="text" id="etq-tit" value="${esc(aj.titulo)}" maxlength="40" ${adm?"":"disabled"}></div>
+        <div class="row" style="gap:8px">${["c1","c2","c3"].map((k,i)=>`<div class="field" style="flex:1"><label for="etq-${k}">Campo ${i+1}</label><input type="text" id="etq-${k}" value="${esc(aj[k])}" maxlength="14" ${adm?"":"disabled"} data-etqaj="${k}"></div>`).join("")}</div>
         <div class="field"><label for="etq-qr">El QR contiene</label><select id="etq-qr" ${adm?"":"disabled"}>${Object.entries(QRMODOS).map(([k,l])=>`<option value="${k}" ${aj.qr===k?"selected":""}>${l}</option>`).join("")}</select></div>
         <div class="row" style="gap:8px;align-items:center;flex-wrap:wrap"><span class="small muted">Logo:</span><span class="small">${aj.logo?"propio":"engrane (predeterminado)"}</span>
           ${adm?`<label class="btn" style="cursor:pointer">Subir logo<input type="file" id="etq-logo" accept="image/*" hidden></label>${aj.logo?'<button class="btn" id="etq-nologo">Quitar</button>':""}`:""}</div>
@@ -191,7 +195,8 @@ async function importar(file){
   if(!window.XLSX){A.toast("No se cargó el lector de Excel. Recarga la página.");return}
   const wb=XLSX.read(await file.arrayBuffer(),{type:"array"});const filas=XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]],{defval:""});
   const col=(o,names)=>{const k=Object.keys(o).find(k=>names.includes(norm(k)));return k?String(o[k]).trim():""};
-  const rows=filas.map(o=>({modelo:col(o,["modelo","model"]),edificio:col(o,["edificio","building","bldg","edif"]),sn:col(o,["sn","serie","serial","numero de serie","no. serie","n/s","s/n","numero serie"]),
+  const aj=ajustes(),al=k=>norm(lbl(aj,k));
+  const rows=filas.map(o=>({modelo:col(o,["modelo","model",al("c1")]),edificio:col(o,["edificio","building","bldg","edif",al("c2")]),sn:col(o,["sn","serie","serial","numero de serie","no. serie","n/s","s/n","numero serie",al("c3")]),
     qr:col(o,["qr","contenido qr"]),copias:Math.min(99,Math.max(1,parseInt(col(o,["copias","cantidad","qty"]))||1)),creado_email:(A.S.session.user.email||"").toLowerCase()})).filter(r=>r.modelo||r.sn);
   if(!rows.length){A.toast("No encontré filas. Usa las columnas Modelo, Edificio y SN (descarga la plantilla).");return}
   const {error}=await A.sb.from("eq_etiquetas").insert(rows);if(error){A.toast(error.message);return}
@@ -199,7 +204,7 @@ async function importar(file){
 }
 function plantilla(){
   if(!window.XLSX){A.toast("No se cargó el generador de Excel. Recarga la página.");return}
-  const ws=XLSX.utils.aoa_to_sheet([["Modelo","Edificio","SN","QR (opcional)","Copias"],["XXXXXX","B1","12345678","",1]]);ws["!cols"]=[{wch:22},{wch:12},{wch:18},{wch:30},{wch:8}];
+  const aj=ajustes();const ws=XLSX.utils.aoa_to_sheet([[cap(lbl(aj,"c1")),cap(lbl(aj,"c2")),lbl(aj,"c3"),"QR (opcional)","Copias"],["XXXXXX","B1","12345678","",1]]);ws["!cols"]=[{wch:22},{wch:12},{wch:18},{wch:30},{wch:8}];
   const wb=XLSX.utils.book_new();XLSX.utils.book_append_sheet(wb,ws,"Etiquetas");XLSX.writeFile(wb,"Plantilla_etiquetas.xlsx");
 }
 function desdeEquipos(){
@@ -215,6 +220,17 @@ function desdeEquipos(){
   $("#eqx-ok").onclick=async()=>{const ids=[...root.querySelectorAll("[data-eqx]:checked")].map(c=>c.dataset.eqx);if(!ids.length){root.innerHTML="";return}
     const rows=ids.map(id=>{const e=A.eq().find(x=>x.id===id);return{modelo:e.modelo||e.tipo||"",edificio:A.sitioCorto(e.sitio||"")||"",sn:e.serial||e.id,equipo_id:e.id,creado_email:(A.S.session.user.email||"").toLowerCase()}});
     const {error}=await A.sb.from("eq_etiquetas").insert(rows);if(error){A.toast(error.message);return}root.innerHTML="";A.toast(`${rows.length} agregadas`);load()};
+}
+function cambiarEdificio(){
+  const aj=ajustes(),n=lbl(aj,"c2").toLowerCase(),ids=[...T.sel],root=$("#modal-root");
+  root.innerHTML=`<div class="modal-scrim"><div class="panel modal" role="dialog" aria-modal="true" aria-labelledby="ce-t" style="width:min(420px,100%)">
+    <div class="ph"><h3 id="ce-t">Cambiar ${esc(n)}</h3><button class="btn" id="ce-x">Cancelar</button></div>
+    <form class="pb" id="f-ce" style="display:grid;gap:12px"><p class="small muted" style="margin:0">Se aplica a las ${ids.length} etiquetas marcadas.</p>
+      <div class="field"><label for="ce-v">Nuevo valor</label><input type="text" id="ce-v" list="etq-edifs" required maxlength="40"></div>
+      <div class="row" style="justify-content:flex-end"><button class="btn primary">Aplicar</button></div></form></div></div>`;
+  $("#ce-x").onclick=()=>root.innerHTML="";$("#ce-v").focus();
+  $("#f-ce").onsubmit=async e=>{e.preventDefault();const v=$("#ce-v").value.trim();const {error}=await A.sb.from("eq_etiquetas").update({edificio:v}).in("id",ids);
+    if(error){A.toast(error.message);return}T.rows.forEach(r=>{if(T.sel.has(r.id))r.edificio=v});root.innerHTML="";A.toast(`${ids.length} actualizadas`);A.rerender()};
 }
 async function subirLogo(file){
   const url=await new Promise(ok=>{const fr=new FileReader();fr.onload=()=>ok(fr.result);fr.readAsDataURL(file)});
@@ -232,6 +248,7 @@ function bind(root){
     if(t.id==="etq-tpl"){plantilla();return}
     if(t.id==="etq-pdf"){generarPDF();return}
     if(t.id==="etq-nologo"){await A.saveCfg({titulo:ajustes().titulo,qr:ajustes().qr,logo:""});return}
+    if(t.id==="etq-edsel"){cambiarEdificio();return}
     if(t.id==="etq-delsel"){if(t.dataset.c!=="1"){t.dataset.c="1";t.textContent="¿Seguro? Clic de nuevo";return}
       const ids=[...T.sel];const {error}=await A.sb.from("eq_etiquetas").delete().in("id",ids);if(error){A.toast(error.message);return}T.sel.clear();load();return}
     const d=t.closest("[data-etqdel]");if(d){if(d.dataset.c!=="1"){d.dataset.c="1";d.textContent="¿?";return}const {error}=await A.sb.from("eq_etiquetas").delete().eq("id",d.dataset.etqdel);if(error)A.toast(error.message);else{T.sel.delete(d.dataset.etqdel);load()}return}
@@ -246,7 +263,8 @@ function bind(root){
       if(k==="copias")A.rerender();else{T.prev=id;preview()}return}
     if(t.id==="etq-file"&&t.files[0]){await importar(t.files[0]);t.value="";return}
     if(t.id==="etq-logo"&&t.files[0]){try{const logo=await subirLogo(t.files[0]);await A.saveCfg({...ajustes(),logo})}catch(_){A.toast("No se pudo leer la imagen")}return}
-    if(t.id==="etq-tit"||t.id==="etq-qr"){await A.saveCfg({...ajustes(),titulo:$("#etq-tit").value.trim()||"CONTROL DE PRODUCCIÓN",qr:$("#etq-qr").value});return}
+    if(t.id==="etq-tit"||t.id==="etq-qr"||t.dataset.etqaj){const def={c1:"MODELO",c2:"EDIFICIO",c3:"SN"};
+      await A.saveCfg({...ajustes(),titulo:$("#etq-tit").value.trim()||"CONTROL DE PRODUCCIÓN",qr:$("#etq-qr").value,...Object.fromEntries(Object.keys(def).map(k=>[k,$("#etq-"+k).value.trim()||def[k]]))});return}
     if(t.id==="etq-w"){const w=Math.min(200,Math.max(30,+t.value||90));T.page.ancho=w;T.page.alto=Math.round(w*660/1180*10)/10;savePage();A.rerender();return}
     if(t.id==="etq-hoja"){T.page.hoja=t.value;savePage();A.rerender();return}
     if(t.id==="etq-corte"){T.page.corte=t.checked;savePage();return}
