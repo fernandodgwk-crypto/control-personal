@@ -319,7 +319,7 @@ function renderDrawer(){
       <div class="field"><label for="f-area">Área</label><select id="f-area" ${dis}>${(()=>{const l=C.areas.slice();if(d.area&&!l.includes(d.area))l.push(d.area);return '<option value="">Sin asignar</option>'+l.map(a=>`<option value="${esc(a)}" ${a===d.area?"selected":""}>${esc(areaLbl(a))}</option>`).join("")})()}</select></div>
       <div class="field"><label for="f-puesto">Puesto (HR)</label><input id="f-puesto" type="text" value="${esc(d.puesto)}" ${dis}></div>
       <div class="field"><label for="f-sitio">Sitio</label><select id="f-sitio" ${dis}>${opt(C.sitios||[],d.sitio,"Sin sitio")}</select></div>
-      <div class="field"><label for="f-sup">Supervisor directo</label><select id="f-sup" ${D.isNew||gestiona()?dis:"disabled"} title="${D.isNew||gestiona()?"":"El supervisor se cambia con un movimiento aprobado"}">${opt(supsUsed(),d.supervisor,"Sin supervisor")}</select>${!D.isNew&&canRequestFor(d)?`<button type="button" class="btn" id="f-mov" style="margin-top:6px">Solicitar cambio de supervisor</button>`:""}${pendingFor(d.num)?`<span class="chip warn" style="margin-top:6px;align-self:flex-start">Movimiento pendiente</span>`:""}</div>
+      <div class="field"><label for="f-sup">Supervisor directo</label><select id="f-sup" ${D.isNew||S.isAdmin?dis:"disabled"} title="${D.isNew||S.isAdmin?"":"El supervisor se cambia con un movimiento aprobado"}">${opt(supsUsed(),d.supervisor,"Sin supervisor")}</select>${!D.isNew&&canRequestFor(d)?`<button type="button" class="btn" id="f-mov" style="margin-top:6px">Solicitar cambio de supervisor</button>`:""}${pendingFor(d.num)?`<span class="chip warn" style="margin-top:6px;align-self:flex-start">Movimiento pendiente</span>`:""}</div>
       <div class="field"><label for="f-ger">Gerente</label><select id="f-ger" ${dis}>${opt(C.gerentes||[],d.gerente,"Sin gerente")}</select></div>
       <div class="field"><label for="f-activo">Estatus</label><select id="f-activo" ${dis}><option value="1" ${d.activo!==false?"selected":""}>Activo</option><option value="0" ${d.activo===false?"selected":""}>Baja</option></select></div>
     </div>
@@ -530,7 +530,14 @@ function catCerts(){
 const pendingFor=num=>S.movs.find(m=>m.num===num&&m.estado==="pendiente");
 const gestiona=()=>S.perms.has("gestionar_movimientos");
 function canRequestFor(e){return gestiona()||mySups().length>0}
-function iApprove(m){if(m.estado!=="pendiente")return false;if(gestiona())return true;const my=mySups();return m.tipo==="pase"?my.includes(m.a_supervisor):my.includes(m.de_supervisor)}
+const norm=x=>String(x||"").trim().toLowerCase();
+function soyGerenteDe(nombre){if(!nombre)return false;const me=myEmail();for(const e of S.emps.values())if(norm(e.nombre)===norm(nombre)&&norm(e.email)===me&&me)return true;return false}
+// Aprueban: admin, el supervisor involucrado que no lo pidió y el gerente (de la persona o de los supervisores). Nunca quien lo pidió.
+function iApprove(m){if(m.estado!=="pendiente")return false;if(S.isAdmin)return true;
+  if(m.solicitado_por===S.session.user.id||norm(m.solicitado_email)===myEmail())return false;
+  const my=mySups();if(my.includes(m.de_supervisor)||my.includes(m.a_supervisor))return true;
+  const e=S.emps.get(m.num),gs=[e&&e.gerente,...S.sups.filter(x=>x.nombre===m.de_supervisor||x.nombre===m.a_supervisor).map(x=>x.gerente)];
+  return gs.some(soyGerenteDe)}
 const pendingToApprove=()=>S.movs.filter(iApprove).length;
 const fmtTs=t=>t?new Date(t).toLocaleString("es-MX",{day:"numeric",month:"short",hour:"2-digit",minute:"2-digit"}):"";
 const TIPO_LBL={pase:"Pase",solicitud:"Solicitud"},EST_CLS={pendiente:"warn",aprobado:"ok",rechazado:"bad",cancelado:""};
@@ -570,7 +577,7 @@ function openMovModal(tipo,num){
   root.innerHTML=`<div class="modal-scrim"><div class="panel modal" role="dialog" aria-modal="true" aria-labelledby="mv-t" style="width:min(520px,100%)">
     <div class="ph"><h3 id="mv-t">${tipo==="pase"?"Pasar persona a otro supervisor":"Solicitar persona de otro supervisor"}</h3><button class="btn" id="mv-x">Cancelar</button></div>
     <form class="pb" id="f-mv" style="display:grid;gap:12px">
-      <p class="small muted" style="margin:0">${S.isAdmin?"Como administrador, el cambio se aplica al momento y queda en el historial.":(tipo==="pase"?"El supervisor que la recibe debe aprobar el pase.":"El supervisor actual de la persona debe aprobar soltarla.")+" Hasta que se apruebe, la persona sigue con su supervisor actual."}</p>
+      <p class="small muted" style="margin:0">${S.isAdmin?"Como administrador, el cambio se aplica al momento y queda en el historial.":(tipo==="pase"?"Lo aprueba el supervisor que la recibe, el gerente o el administrador.":"Lo aprueba el supervisor actual de la persona, el gerente o el administrador.")+" Tú no puedes aprobar tu propia solicitud; solo cancelarla."+" Hasta que se apruebe, la persona sigue con su supervisor actual."}</p>
       <div class="field"><label for="mv-num">Persona</label><select id="mv-num" required>${ppl.length?"":'<option value="">No hay personas disponibles</option>'}${ppl.map(e=>`<option value="${esc(e.num)}" ${e.num===num?"selected":""}>${esc(e.nombre)} · ${esc(e.supervisor||"sin supervisor")}</option>`).join("")}</select></div>
       <div class="field"><label for="mv-dest">${tipo==="pase"?"Pasar a":"Para el equipo de"}</label><select id="mv-dest" required></select></div>
       <div class="field"><label for="mv-mot">Motivo</label><textarea id="mv-mot" placeholder="Ej. apoyo en otra línea, cambio de turno, balanceo de equipo"></textarea></div>
