@@ -109,7 +109,8 @@ function refreshSelects(){
 function supsUsed(){const c=S.sups.filter(x=>x.activo!==false).map(x=>x.nombre);active().forEach(e=>{if(e.supervisor&&!c.includes(e.supervisor))c.push(e.supervisor)});return c.sort((a,b)=>a.localeCompare(b))}
 const backupOf=()=>S.sups.filter(x=>x.activo!==false&&x.backup_email&&x.backup_email.toLowerCase()===myEmail()).map(x=>x.nombre);
 const myTeams=()=>[...new Set([...mySups(),...backupOf()])];
-const canMarkFor=e=>S.canMark||backupOf().includes(e.supervisor);
+// Solo el supervisor a cargo, su back o el administrador marcan asistencia, programan vacaciones y registran T.E. (lo valida la base: a_cargo_de)
+const canMarkFor=e=>!!e&&(S.isAdmin||myTeams().includes(e.supervisor));
 const canProgram=()=>verTodos()||myTeams().length>0;
 const isSupName=n=>S.sups.some(x=>x.nombre===n&&x.activo!==false);
 const isGerName=n=>(cfg().gerentes||[]).includes(n);
@@ -579,7 +580,7 @@ function openMovModal(tipo,num){
     <form class="pb" id="f-mv" style="display:grid;gap:12px">
       <p class="small muted" style="margin:0">${S.isAdmin?"Como administrador, el cambio se aplica al momento y queda en el historial.":(tipo==="pase"?"Lo aprueba el supervisor que la recibe, el gerente o el administrador.":"Lo aprueba el supervisor actual de la persona, el gerente o el administrador.")+" Tú no puedes aprobar tu propia solicitud; solo cancelarla."+" Hasta que se apruebe, la persona sigue con su supervisor actual."}</p>
       <div class="field"><label for="mv-num">Persona</label><select id="mv-num" required>${ppl.length?"":'<option value="">No hay personas disponibles</option>'}${ppl.map(e=>`<option value="${esc(e.num)}" ${e.num===num?"selected":""}>${esc(e.nombre)} · ${esc(e.supervisor||"sin supervisor")}</option>`).join("")}</select></div>
-      <div class="field"><label for="mv-dest">${tipo==="pase"?"Pasar a":"Para el equipo de"}</label><select id="mv-dest" required></select></div>
+      <div class="field"><label for="mv-dest">${tipo==="pase"?"Pasar a":(gest?"Para el equipo de":"Para el equipo de (solicitante)")}</label><select id="mv-dest" required ${tipo==="solicitud"&&!gest&&my.length===1?"disabled":""}></select>${tipo==="solicitud"&&!gest?'<div class="small muted" style="margin-top:4px">Se asigna en automático a quien solicita.</div>':""}</div>
       <div class="field"><label for="mv-mot">Motivo</label><textarea id="mv-mot" placeholder="Ej. apoyo en otra línea, cambio de turno, balanceo de equipo"></textarea></div>
       <div id="mv-err" style="color:var(--bad);font-size:13px;min-height:1.2em"></div>
       <div class="row" style="justify-content:flex-end"><button class="btn primary" ${ppl.length&&destinos.length?"":"disabled"}>Enviar solicitud</button></div></form></div></div>`;
@@ -739,7 +740,7 @@ function sugeridosTE(fil,f){
   return active().filter(e=>e.turno&&fil(e)&&trabajo(e.num,f)&&!progOn(e.num,f).vac&&streakAt(e.num,f)<6)
     .map(e=>Object.assign({e},teInfo(e,f))).filter(x=>x.disp>0).sort((a,b)=>a.sem-b.sem||b.disp-a.disp);
 }
-const canTE=e=>canMarkFor(e)||S.perms.has("gestionar_movimientos");
+const canTE=e=>canMarkFor(e);
 async function loadTE(){const {data,error}=await S.sb.from("tiempo_extra").select("*").gte("fecha",addDays(ymd(new Date()),-63)).order("fecha");S.te=error?[]:(data||[]);S.teLoaded=true;renderActive()}
 function renderTE(){
   const root=$("#te-root");if(!S.teLoaded){root.innerHTML='<div class="panel empty">Cargando…</div>';return}

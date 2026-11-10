@@ -29,6 +29,8 @@ El menú está agrupado en las tres áreas que administra la app: **Personal** (
 
 Este proyecto de Supabase lo comparte la app de Surtido de Línea: las cuentas nuevas entran con rol `sin_acceso` y no ven datos hasta que el administrador les asigna un rol (aplicado; ver `supabase/admin_y_catalogos.sql`).
 
+- **Asistencia, vacaciones/descansos y tiempo extra:** solo los registra el supervisor a cargo de la persona, su back o el administrador (lo valida la base, `supabase/solo_a_cargo.sql`). El rol supervisor ya no tiene *gestionar movimientos*.
+- **Solicitar persona** (desde Personal o Movimientos): el equipo destino se asigna en automático a quien solicita.
 - **Pase de lista:** cada supervisor ve solo a su personal (según el correo ligado en Catálogos → Supervisores). El admin y quien gestione movimientos ven a todos.
 - **Personal:** todo el personal, incluidos supervisores, gerentes y dirección. En la ficha se marca *Es supervisor* / *Es gerente* y, si la persona tiene cuenta, el admin le asigna su rol en la app.
 - **Admin:** aprueba cualquier movimiento y sus propios cambios de supervisor se aplican sin aprobación.
