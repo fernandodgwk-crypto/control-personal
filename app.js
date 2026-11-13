@@ -103,7 +103,7 @@ function refreshSelects(){
   const sups=supsUsed();fillSelect($("#p-sup"),sups,"Todos los supervisores");fillSelect($("#cov-sup"),sups,"Todos los supervisores");
   const ls=verTodos()?sups:mySups();fillSelect($("#l-sup"),ls,ls.length>1||verTodos()?"Todos mis equipos":null);$("#l-sup").hidden=!verTodos()&&ls.length<2;
   if(verTodos())$("#l-sup").options[0].text="Todos los supervisores";
-  fillSelect($("#p-cargo"),["Supervisores","Gerentes","Operativos"],"Todos los cargos");
+  fillSelect($("#p-cargo"),["Supervisores","Gerentes","Operativos","Con restricción médica"],"Todos los cargos");
   fillSelect($("#l-area"),cfg().areas,"Todas las áreas",areaLbl);fillSelect($("#p-area"),cfg().areas,"Todas las áreas",areaLbl);
 }
 function supsUsed(){const c=S.sups.filter(x=>x.activo!==false).map(x=>x.nombre);active().forEach(e=>{if(e.supervisor&&!c.includes(e.supervisor))c.push(e.supervisor)});return c.sort((a,b)=>a.localeCompare(b))}
@@ -248,7 +248,7 @@ function renderLista(){
   $("#l-list").innerHTML=ppl.map(e=>{const s=markOf(e);
     const pg=progOn(e.num,S.date),stk=streakBefore(e.num,S.date);
     return `<div class="rrow"><div class="who"><b>${esc(e.nombre)}</b><span><span class="mono">${esc(e.num)}</span> · ${esc(e.posicion||"sin posición")}${e.area?" · "+esc(e.area):""}${e.celular?` · <span class="tel">${esc(e.celular)}</span>`:""}</span>
-      ${pg.vac?'<span class="chip info" style="margin-top:4px">Vacaciones programadas</span> ':""}${pg.comp?'<span class="chip acc" style="margin-top:4px">Descanso compensatorio</span> ':""}${pg.dl?'<span class="chip warn" style="margin-top:4px">Trabaja su descanso</span> ':""}${stk>=6&&!s?`<span class="chip bad" style="margin-top:4px">RBA: ${stk} días seguidos, debe descansar</span>`:""}</div>
+      ${pg.vac?'<span class="chip info" style="margin-top:4px">Vacaciones programadas</span> ':""}${pg.comp?'<span class="chip acc" style="margin-top:4px">Descanso compensatorio</span> ':""}${pg.dl?'<span class="chip warn" style="margin-top:4px">Trabaja su descanso</span> ':""}${stk>=6&&!s?`<span class="chip bad" style="margin-top:4px">RBA: ${stk} días seguidos, debe descansar</span>`:""}${restrChip(e,S.date,"margin-top:4px")}</div>
     <div class="marks">${Object.keys(ST).map(k=>`<button class="mk s-${k} ${s===k?"on":""}" data-mark="${k}" data-emp="${esc(e.num)}" title="${ST[k]}" aria-label="${ST[k]}: ${esc(e.nombre)}" aria-pressed="${s===k}" ${canMarkFor(e)?"":"disabled"}>${k}</button>`).join("")}</div></div>`}).join("");
 }
 async function mark(num,s){
@@ -276,7 +276,7 @@ async function markAll(){
 function renderPersonal(){
   $("#p-new").hidden=!S.canPersonal;
   const q=$("#p-q").value.trim().toLowerCase(),t=$("#p-turno").value,p=$("#p-pos").value,a=$("#p-area").value,st=$("#p-sitio").value,g=$("#p-ger").value,sp=$("#p-sup").value,cg=$("#p-cargo").value,b=$("#p-bajas").checked;
-  const cargoOk=e=>!cg||(cg==="Supervisores"?isSupName(e.nombre):cg==="Gerentes"?isGerName(e.nombre):(!isSupName(e.nombre)&&!isGerName(e.nombre)));
+  const cargoOk=e=>!cg||(cg==="Con restricción médica"?!!restrOn(e.num):cg==="Supervisores"?isSupName(e.nombre):cg==="Gerentes"?isGerName(e.nombre):(!isSupName(e.nombre)&&!isGerName(e.nombre)));
   const ppl=[...S.emps.values()].filter(e=>(b||e.activo!==false)&&(!t||e.turno===t)&&(!p||e.posicion===p)&&(!a||e.area===a)&&(!st||e.sitio===st)&&(!g||e.gerente===g)&&(!sp||e.supervisor===sp)&&cargoOk(e)&&
     (!q||e.nombre.toLowerCase().includes(q)||String(e.num).includes(q)||(e.celular||"").includes(q))).sort((x,y)=>x.nombre.localeCompare(y.nombre));
   if(!ppl.length){$("#p-table").innerHTML=`<div class="empty">${S.loaded?"Sin resultados.":"Cargando personal…"}</div>`;return}
@@ -284,7 +284,7 @@ function renderPersonal(){
   $("#p-table").innerHTML=`<table><thead><tr><th>Nombre</th><th>Turno</th><th>Posición</th><th>Área</th><th>Sitio</th><th>Reporta a</th><th>Celular</th><th>Certificaciones</th><th>Hoy</th></tr></thead><tbody>${
     ppl.map(e=>{const s=markOf(e);const miss=missingCerts(e,S.date);
       const certs=(e.certs||[]).map(c=>{const st=!certValid(c,S.date)?"bad":(c.vence&&c.vence<=soon?"warn":"ok");return `<span class="chip ${st}" title="${c.vence?"Vence "+fmtD(c.vence):"Sin vencimiento"}">${esc(c.nombre)}</span>`}).join(" ");
-      return `<tr class="click" data-emp="${esc(e.num)}"><td><b style="font-weight:600">${esc(e.nombre)}</b>${e.activo===false?' <span class="chip">Baja</span>':""}${isGerName(e.nombre)?' <span class="chip info">Gerente</span>':""}${isSupName(e.nombre)?` <span class="chip acc">Supervisor · ${countBy("supervisor",e.nombre)}</span>`:""}<div class="mono muted">${esc(e.num)} · ${esc(e.puesto||"")}</div></td>
+      return `<tr class="click" data-emp="${esc(e.num)}"><td><b style="font-weight:600">${esc(e.nombre)}</b>${e.activo===false?' <span class="chip">Baja</span>':""}${isGerName(e.nombre)?' <span class="chip info">Gerente</span>':""}${isSupName(e.nombre)?` <span class="chip acc">Supervisor · ${countBy("supervisor",e.nombre)}</span>`:""}<div class="mono muted">${esc(e.num)} · ${esc(e.puesto||"")}</div>${restrOn(e.num)?`<div style="margin-top:3px">${restrChip(e)}</div>`:""}</td>
       <td>${esc(e.turno||"—")}</td><td>${esc(e.posicion||"—")}</td><td>${e.area?esc(e.area):'<span class="muted">Sin asignar</span>'}</td>
       <td>${esc(sitioCorto(e.sitio)||"—")}</td>
       <td style="font-size:13.5px">${e.supervisor?esc(e.supervisor):'<span class="muted">—</span>'}${e.gerente?`<div class="muted" style="font-size:12px">Gerente: ${esc(e.gerente)}</div>`:""}</td>
@@ -300,7 +300,7 @@ function openEmp(num){
   const e=num?S.emps.get(num):null;
   if(!e&&!S.canPersonal)return;
   D={isNew:!e,orig:e?e.nombre:"",data:JSON.parse(JSON.stringify(e||{num:"",nombre:"",email:"",turno:$("#l-turno").value||cfg().turnos[0]||"",posicion:"",puesto:"",area:"",sitio:"",gerente:"",supervisor:"",celular:"",certs:[],activo:true,notas:""}))};
-  renderDrawer();if(e)loadHistory(e);
+  renderDrawer();if(e){loadHistory(e);if(canRestr(e))loadRestrDet(e.num)}
 }
 function closeDrawer(){D=null;$("#drawer-root").innerHTML=""}
 function opt(items,val,blank){const list=items.slice();if(val&&!list.includes(val))list.push(val);return (blank?`<option value="">${blank}</option>`:"")+list.map(i=>`<option ${i===val?"selected":""} value="${esc(i)}">${esc(i)}</option>`).join("")}
@@ -325,6 +325,7 @@ function renderDrawer(){
       <div class="field"><label for="f-activo">Estatus</label><select id="f-activo" ${dis}><option value="1" ${d.activo!==false?"selected":""}>Activo</option><option value="0" ${d.activo===false?"selected":""}>Baja</option></select></div>
     </div>
     ${cargoBlock(d)}
+    ${D.isNew?"":restrBlock(d)}
     ${d.posicion&&((C.perfiles||{})[d.posicion]||{}).descripcion?`<div class="banner info" style="font-weight:400"><b>${esc(d.posicion)}:</b> ${esc(C.perfiles[d.posicion].descripcion)}</div>`:""}
     ${d.antiguedad||d.ingreso?`<div class="muted" style="font-size:13px">Antigüedad: ${esc(d.antiguedad)}${d.ingreso?" · Ingreso "+fmtD(d.ingreso):""}${d.tipo?" · "+esc(d.tipo):""}${d.clasif?" · "+esc(d.clasif):""}</div>`:""}
     <div class="panel" style="padding:12px">
@@ -343,6 +344,43 @@ function renderDrawer(){
   </div>
   <footer><button class="btn" data-close>${ro?"Cerrar":"Cancelar"}</button>${ro?"":'<button class="btn primary" id="f-save">Guardar</button>'}</footer></aside>`;
 }
+function restrBlock(d){
+  const e=S.emps.get(d.num)||d,ed=canRestr(e),pub=S.restr&&S.restr.get(d.num),r=D.rxOff?null:(D.rx||D.rdet||pub),C=cfg();
+  const fmtVig=x=>x.tipo==="permanente"||!x.hasta?"Permanente desde "+fmtD(x.desde):"Del "+fmtD(x.desde)+" al "+fmtD(x.hasta);
+  if(!ed){return `<div class="panel" style="padding:12px;display:grid;gap:8px"><h2 style="font-size:18px;margin:0">Restricción médica</h2>
+    ${pub?`<div>${restrOn(d.num)?'<span class="chip med">Vigente</span>':'<span class="chip">No vigente hoy</span>'} <span class="small">${esc(fmtVig(pub))}</span></div><div>${(pub.limitaciones||[]).map(x=>`<span class="chip">${esc(x)}</span>`).join(" ")||'<span class="muted small">Sin limitaciones capturadas</span>'}</div>`
+      :'<span class="muted small">Sin restricción médica registrada.</span>'}
+    <div class="small muted">La capturan el supervisor a cargo, su back, el gerente o el administrador.</div></div>`}
+  const on=!!r,lims=[...new Set([...(C.restricciones||[]),...((r&&r.limitaciones)||[])])];
+  return `<div class="panel" style="padding:12px;display:grid;gap:10px" id="f-rx"><h2 style="font-size:18px;margin:0">Restricción médica</h2>
+    <label class="ck" style="display:flex;gap:6px;align-items:center"><input type="checkbox" id="rx-on" ${on?"checked":""} style="width:auto"> Tiene restricción médica</label>
+    ${on?`<div class="grid2">
+      <div class="field"><label for="rx-tipo">Tipo</label><select id="rx-tipo"><option value="temporal" ${r.tipo!=="permanente"?"selected":""}>Temporal</option><option value="permanente" ${r.tipo==="permanente"?"selected":""}>Permanente</option></select></div>
+      <div class="field"><label for="rx-desde">Desde</label><input type="date" id="rx-desde" value="${esc(r.desde||S.date)}"></div>
+      ${r.tipo!=="permanente"?`<div class="field"><label for="rx-hasta">Hasta</label><input type="date" id="rx-hasta" value="${esc(r.hasta||"")}"></div>`:""}</div>
+    <div class="field"><label>Qué no puede hacer</label><div class="rx-lims">${lims.map(x=>`<label class="ck"><input type="checkbox" data-rxlim="${esc(x)}" ${(r.limitaciones||[]).includes(x)?"checked":""} style="width:auto"> ${esc(x)}</label>`).join("")||'<span class="muted small">Agrega limitaciones en Catálogos → Restricciones médicas.</span>'}</div></div>
+    <div class="field"><label for="rx-otra">Otra limitación</label><input type="text" id="rx-otra" maxlength="80" placeholder="Ej. No subir escaleras"></div>
+    <div class="field"><label for="rx-nota">Indicaciones (sin diagnóstico)</label><textarea id="rx-nota" placeholder="Ej. Revisión con el médico el 20/11. Solo ven esta nota el supervisor, su back, el gerente y el administrador.">${esc((D.rx||D.rdet||{}).nota||"")}</textarea></div>
+    ${D.rdet&&D.rdet.registro_email?`<div class="small muted">Registró ${esc(D.rdet.registro_email)} · ${fmtTs(D.rdet.actualizado)}</div>`:""}`
+    :'<div class="small muted">Marca la casilla para registrar qué no puede hacer y la vigencia. No captures el diagnóstico.</div>'}
+    <div class="row" style="justify-content:flex-end;gap:8px">${pub?'<button class="btn danger" id="rx-del">Quitar restricción</button>':""}${on?'<button class="btn primary" id="rx-save">Guardar restricción</button>':""}</div></div>`;
+}
+function readRx(){if(!$("#rx-on"))return;if(!$("#rx-on").checked){D.rx=null;return}
+  const lims=[...document.querySelectorAll("[data-rxlim]:checked")].map(i=>i.dataset.rxlim),otra=$("#rx-otra")?$("#rx-otra").value.trim():"";if(otra&&!lims.includes(otra))lims.push(otra);
+  D.rx={num:D.data.num,tipo:$("#rx-tipo")?$("#rx-tipo").value:"temporal",desde:$("#rx-desde")?$("#rx-desde").value||S.date:S.date,hasta:$("#rx-hasta")&&$("#rx-hasta").value||null,limitaciones:lims,nota:$("#rx-nota")?$("#rx-nota").value.trim():""}}
+async function loadRestrDet(num){const {data}=await S.sb.from("restricciones_medicas").select("*").eq("num",num).maybeSingle();if(D&&D.data.num===num){D.rdet=data||null;if(!D.rx)renderDrawerKeep()}}
+function renderDrawerKeep(){if(!D)return;readForm();const sc=($(".drawer .body")||{}).scrollTop||0;renderDrawer();const b=$(".drawer .body");if(b)b.scrollTop=sc}
+async function saveRx(){readRx();const x=D.rx;if(!x){return}
+  if(!x.limitaciones.length){toast("Marca al menos una limitación.");return}
+  if(x.tipo==="temporal"&&!x.hasta){toast("Indica hasta cuándo es la restricción temporal.");return}
+  if(x.hasta&&x.hasta<x.desde){toast("La fecha final debe ser igual o posterior a la inicial.");return}
+  if(x.tipo==="permanente")x.hasta=null;
+  const {error}=await S.sb.from("restricciones_medicas").upsert(x,{onConflict:"num"});
+  if(error){toast(errMsg(error));return}
+  D.rx=null;toast("Restricción médica guardada");await loadRestr();await loadRestrDet(x.num);renderDrawerKeep()}
+async function delRx(btn){if(btn.dataset.c!=="1"){btn.dataset.c="1";btn.textContent="¿Seguro? Clic de nuevo";return}
+  const {error}=await S.sb.from("restricciones_medicas").delete().eq("num",D.data.num);if(error){toast(errMsg(error));return}
+  D.rx=null;D.rdet=null;toast("Restricción quitada");await loadRestr();renderDrawerKeep()}
 function cargoBlock(d){
   const ed=S.canCatalog,dis=ed?"":"disabled",sup=isSupName(D.orig||d.nombre),ger=isGerName(D.orig||d.nombre);
   const acc=S.isAdmin&&d.email?S.users.find(u=>(u.email||"").toLowerCase()===d.email.trim().toLowerCase()):null;
@@ -413,6 +451,7 @@ async function loadHistory(e){
 const CATS=[
   {id:"perfiles",label:"Perfiles",key:"posiciones",field:"posicion",group:"Puestos"},
   {id:"certificaciones",label:"Certificaciones",key:"certs",group:"Puestos"},
+  {id:"restricciones",label:"Restricciones médicas",key:"restricciones",group:"Puestos"},
   {id:"supervisores",label:"Supervisores",group:"Organización",count:()=>S.sups.length},
   {id:"areas",label:"Áreas",key:"areas",field:"area",group:"Organización",one:"área",help:"Procesos o zonas donde trabaja cada persona. Se usan en la cobertura por área."},
   {id:"sitios",label:"Sitios",key:"sitios",field:"sitio",group:"Organización",one:"sitio",help:"Edificio o planta a la que pertenece cada persona."},
@@ -433,6 +472,7 @@ function renderCatalogos(){
   const body=$("#cat-body");
   if(c.id==="perfiles")body.innerHTML=catPerfiles();
   else if(c.id==="certificaciones")body.innerHTML=catCerts();
+  else if(c.id==="restricciones")body.innerHTML=catRestr();
   else if(c.id==="supervisores")body.innerHTML=catSupervisores();
   else body.innerHTML=catLista(c);
 }
@@ -511,6 +551,20 @@ function catLista(c){
       return `<tr><td>${editCell(c.key,v,esc(c.id==="sitios"?sitioCorto(v):v))}${c.id==="sitios"&&sitioCorto(v)!==v?`<div class="muted" style="font-size:12px">${esc(v)}</div>`:""}</td>${isA?`<td><select data-asitio="${esc(v)}" aria-label="Edificio de ${esc(v)}" ${S.canCatalog?"":"disabled"}><option value="">Sin edificio</option>${sit.map(x=>`<option value="${esc(x)}" ${AS[v]===x?"selected":""}>${esc(sitioCorto(x))}</option>`).join("")}</select></td>`:""}<td class="num">${n||'<span class="muted">0</span>'}</td>${extra?`<td style="font-size:13.5px">${sups.map(esc).join(", ")||'<span class="muted">—</span>'}</td>`:""}<td style="text-align:right">${delBtn(c.key,v)}</td></tr>`}).join("")||`<tr><td colspan="4" class="empty">Vacío.</td></tr>`
   }</tbody></table></div></div>
   ${orphan.length?`<div class="banner">Hay personas con ${esc(c.one)} que no está en el catálogo: ${orphan.map(esc).join(", ")}. ${S.canCatalog?"Agrégalo arriba o corrige sus fichas.":""}</div>`:""}`;
+}
+function catRestr(){
+  const C=cfg(),arr=C.restricciones||[],on=S.date,soon=addDays(on,15);
+  const vig=active().map(e=>({e,r:restrOn(e.num,on)})).filter(x=>x.r).sort((a,b)=>(a.r.hasta||"9999").localeCompare(b.r.hasta||"9999"));
+  const uso=v=>vig.filter(x=>(x.r.limitaciones||[]).includes(v)).length;
+  return `<div class="cathead"><h2>Restricciones médicas</h2><p>Limitaciones que se marcan en la ficha de cada persona (qué no puede hacer). No se captura el diagnóstico. La limitación que contenga "tiempo extra" saca a la persona del recurso sugerido para T.E.</p></div>
+  ${addRow("restricciones","Nueva limitación, ej. No cargar más de 5 kg")}
+  <div class="panel" style="padding:0"><div class="scroll"><table><thead><tr><th>Limitación</th><th class="num">Personas con ella hoy</th><th></th></tr></thead><tbody>${
+    arr.map(v=>`<tr><td>${esc(v)}</td><td class="num">${uso(v)}</td><td style="text-align:right">${delBtn("restricciones",v)}</td></tr>`).join("")||'<tr><td colspan="3" class="empty">Sin limitaciones en el catálogo.</td></tr>'
+  }</tbody></table></div></div>
+  <div class="panel" style="padding:0;margin-top:14px"><div class="ph"><h3>Personal con restricción vigente</h3><span class="chip ${vig.length?"warn":""}">${vig.length}</span></div><div class="scroll"><table><thead><tr><th>Persona</th><th>Supervisor</th><th>Limitaciones</th><th>Vigencia</th></tr></thead><tbody>${
+    vig.map(({e,r})=>`<tr class="click" data-emp="${esc(e.num)}"><td>${esc(e.nombre)}<div class="small muted">${esc(e.turno||"")} · ${esc(e.posicion||"")}</div></td><td class="small">${esc(e.supervisor||"—")}</td><td>${(r.limitaciones||[]).map(x=>`<span class="chip">${esc(x)}</span>`).join(" ")}</td>
+      <td class="small nw">${r.hasta?`hasta ${fmtD(r.hasta)}${r.hasta<=soon?' <span class="chip warn">vence pronto</span>':""}`:"Permanente"}</td></tr>`).join("")||'<tr><td colspan="4" class="empty">Nadie tiene restricción médica vigente.</td></tr>'
+  }</tbody></table></div></div>`;
 }
 function catCerts(){
   const C=cfg(),on=S.date,soon30=addDays(on,30),soon60=addDays(on,60),A=active(),dis=S.canCatalog?"":"disabled";
@@ -717,7 +771,7 @@ function openAvisos(){
   root.innerHTML=`<div class="modal-scrim"><div class="panel modal" role="dialog" aria-modal="true" aria-labelledby="av-t" style="width:min(560px,100%)">
     <div class="ph"><h3 id="av-t">Avisos</h3><div class="row">${list.some(a=>!a.leido)?'<button class="btn" id="av-all">Marcar todo como leído</button>':""}<button class="btn" id="av-x">Cerrar</button></div></div>
     <div style="max-height:70vh;overflow:auto">${list.length?list.map(a=>`<div style="padding:12px 16px;border-bottom:1px solid var(--line);${a.leido?"opacity:.65":""}">
-      <div class="row" style="justify-content:space-between"><b style="font-weight:600">${a.leido?"":'<span style="color:var(--accent)">● </span>'}${esc(a.titulo)}</b><span class="chip ${a.tipo==="rba"||a.tipo==="equipo"?"bad":a.tipo==="vacaciones"?"info":"warn"}">${({rba:"RBA",vacaciones:"Vacaciones",equipo:"Equipo",descanso_laborado:"Descanso laborado",te:"Tiempo extra","5s":"5S",acceso:"Acceso"})[a.tipo]||a.tipo}</span></div>
+      <div class="row" style="justify-content:space-between"><b style="font-weight:600">${a.leido?"":'<span style="color:var(--accent)">● </span>'}${esc(a.titulo)}</b><span class="chip ${a.tipo==="rba"||a.tipo==="equipo"?"bad":a.tipo==="vacaciones"?"info":"warn"}">${({rba:"RBA",vacaciones:"Vacaciones",equipo:"Equipo",descanso_laborado:"Descanso laborado",te:"Tiempo extra","5s":"5S",acceso:"Acceso",restriccion:"Restricción médica"})[a.tipo]||a.tipo}</span></div>
       <div class="small" style="margin-top:4px">${esc(a.detalle)}</div><div class="small muted" style="margin-top:2px">${fmtTs(a.creado)}</div></div>`).join(""):'<div class="empty">No tienes avisos.</div>'}</div></div></div>`;
   $("#av-x").onclick=()=>root.innerHTML="";
   const all=$("#av-all");if(all)all.onclick=async()=>{const ids=S.avisos.filter(a=>!a.leido).map(a=>a.id);const {error}=await S.sb.from("avisos").update({leido:true}).in("id",ids);if(error){toast(errMsg(error));return}S.avisos.forEach(a=>a.leido=true);renderNav();openAvisos()};
@@ -737,10 +791,18 @@ function teInfo(e,f){const L=teLim(e.turno),rba=Number(teCfg().rbaSemana)||60;co
   const disp=Math.max(0,Math.min(L.maxDia-hoy,L.maxSemana-sem,rba-total));
   return{L,rba,hoy,sem,dias,total,disp:Math.round(disp*2)/2}}
 function sugeridosTE(fil,f){
-  return active().filter(e=>e.turno&&fil(e)&&trabajo(e.num,f)&&!progOn(e.num,f).vac&&streakAt(e.num,f)<6)
+  return active().filter(e=>e.turno&&fil(e)&&trabajo(e.num,f)&&!progOn(e.num,f).vac&&streakAt(e.num,f)<6&&!sinTE(e.num,f))
     .map(e=>Object.assign({e},teInfo(e,f))).filter(x=>x.disp>0).sort((a,b)=>a.sem-b.sem||b.disp-a.disp);
 }
 const canTE=e=>canMarkFor(e);
+/* ---------- restricciones médicas ---------- */
+// S.restr: lo que todos ven (limitaciones y vigencia). La nota solo la ven admin, supervisor a cargo, back y gerente.
+async function loadRestr(){const {data,error}=await S.sb.rpc("restricciones_publicas");S.restr=new Map((error?[]:(data||[])).map(r=>[r.num,r]));renderActive()}
+const restrOn=(num,f)=>{const r=S.restr&&S.restr.get(num);f=f||S.date;return r&&r.desde<=f&&(!r.hasta||r.hasta>=f)?r:null};
+const restrChip=(e,f,st)=>{const r=restrOn(e.num,f);if(!r)return"";const lim=(r.limitaciones||[]).join(" · ");
+  return `<span class="chip med" style="${st||""}" title="${esc(lim||"Restricción médica")}${r.hasta?" · hasta "+fmtD(r.hasta):" · permanente"}">Restricción médica${lim?": "+esc(lim):""}</span>`};
+const sinTE=(num,f)=>{const r=restrOn(num,f);return !!r&&(r.limitaciones||[]).some(x=>/tiempo extra/i.test(x))};
+const canRestr=e=>!!e&&(S.isAdmin||myTeams().includes(e.supervisor)||soyGerenteDe(e.gerente));
 async function loadTE(){const {data,error}=await S.sb.from("tiempo_extra").select("*").gte("fecha",addDays(ymd(new Date()),-63)).order("fecha");S.te=error?[]:(data||[]);S.teLoaded=true;renderActive()}
 function renderTE(){
   const root=$("#te-root");if(!S.teLoaded){root.innerHTML='<div class="panel empty">Cargando…</div>';return}
@@ -989,6 +1051,12 @@ async function renderNoAccess(){
 }
 
 /* ---------- events ---------- */
+document.addEventListener("change",e=>{
+  if(!D)return;const id=e.target.id;
+  if(id==="rx-on"){if(e.target.checked){D.rxOff=false;if(!D.rdet&&!(S.restr&&S.restr.get(D.data.num)))D.rx={num:D.data.num,tipo:"temporal",desde:S.date,hasta:null,limitaciones:[],nota:""}}else{readRx();D.rx=null;D.rxOff=true}renderDrawerKeep();return}
+  if(id==="rx-tipo"){readRx();renderDrawerKeep();return}
+  if(e.target.closest&&e.target.closest("#f-rx"))readRx();
+});
 $("#fecha").value=S.date;
 $("#fecha").addEventListener("change",e=>{if(!e.target.value)return;S.date=e.target.value;loadAttendance()});
 $("#cov-dim").addEventListener("click",e=>{const b=e.target.closest("button");if(!b)return;S.dim=b.dataset.v;S.sel=null;try{localStorage.setItem("cp_dim",S.dim)}catch(_){}
@@ -1015,6 +1083,8 @@ $("#drawer-root").addEventListener("click",e=>{
   if(e.target.id==="f-addcert"){readForm();D.data.certs=D.data.certs||[];D.data.certs.push({nombre:cfg().certs[0],folio:"",vence:""});renderDrawer();return}
   const del=e.target.closest("[data-cdel]");if(del){readForm();D.data.certs.splice(+del.dataset.cdel,1);renderDrawer();return}
   if(e.target.id==="f-save")saveEmp();
+  if(e.target.id==="rx-save")saveRx();
+  if(e.target.id==="rx-del")delRx(e.target);
   if(e.target.id==="f-mov"){const n=D.data.num;closeDrawer();openMovModal(mySups().includes(S.emps.get(n).supervisor)||S.perms.has("gestionar_movimientos")?"pase":"solicitud",n)}
 });
 document.addEventListener("keydown",e=>{if(e.key==="Escape"&&D)closeDrawer()});
@@ -1205,7 +1275,7 @@ async function startApp(session){
   if(c.data)S.cfg=Object.assign({},DEFAULT_CFG,c.data.data);
   if(e.error){renderBanner(`<div class="banner">No se pudo cargar el personal: ${esc(e.error.message)}</div>`)}
   S.emps=new Map((e.data||[]).map(r=>[r.num,r]));
-  S.loaded=true;await loadSups();applyPerms();refreshSelects();loadMovs();loadRecent().then(renderActive);loadProg();loadAvisos();loadTE();
+  S.loaded=true;await loadSups();applyPerms();refreshSelects();loadMovs();loadRestr();loadRecent().then(renderActive);loadProg();loadAvisos();loadTE();
   await loadAttendance();
   if(S.isAdmin){const {data}=await S.sb.from("perfiles").select("id,email,rol").order("email");S.users=data||[];await loadSols();renderNav();renderActive()}
   subscribe();
@@ -1255,6 +1325,7 @@ function subscribe(){
     .on("postgres_changes",{event:"*",schema:"public",table:"movimientos"},()=>{loadMovs()})
     .on("postgres_changes",{event:"*",schema:"public",table:"programacion"},()=>{loadProg()})
     .on("postgres_changes",{event:"*",schema:"public",table:"tiempo_extra"},()=>{loadTE()})
+    .on("postgres_changes",{event:"*",schema:"public",table:"restricciones_medicas"},()=>{loadRestr()})
     .on("postgres_changes",{event:"INSERT",schema:"public",table:"avisos"},p=>{loadAvisos();if(p.new&&p.new.titulo)toast("Aviso: "+p.new.titulo)})
     .on("postgres_changes",{event:"*",schema:"public",table:"supervisores"},()=>{loadSups().then(()=>{applyPerms();renderActive()})})
     .on("postgres_changes",{event:"*",schema:"public",table:"config"},p=>{
